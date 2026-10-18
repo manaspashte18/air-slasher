@@ -370,10 +370,18 @@ function playComboSound(count) {
   } catch (e) {}
 }
 
-// ── Multi-hand tracking with smoothing ──
-const SMOOTH_FACTOR = 0.45; // 0 = raw (jittery), 1 = frozen. 0.45 feels responsive yet smooth.
-// Each hand: { x, y, lastX, lastY, smoothX, smoothY, trail: [{x,y,age}] }
-let hands_data = [];  // up to 2 entries
+// ── Smooth Single-Hand Tracking System ──
+let playerHand = {
+  active: false,
+  targetX: -1,
+  targetY: -1,
+  x: -1,
+  y: -1,
+  lastX: -1,
+  lastY: -1,
+  trail: [],
+  lastSeenTime: 0
+};
 
 bestEl.textContent = bestScore;
 
@@ -388,7 +396,7 @@ window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
 // ════════════════════════════════════════════════
-//  MEDIAPIPE HANDS SETUP (High-Speed Low-Latency)
+//  MEDIAPIPE HANDS SETUP (16:9 Native Widescreen)
 // ════════════════════════════════════════════════
 let handsReady = false;
 let isProcessingFrame = false;
@@ -412,7 +420,7 @@ function setupHands() {
 
   hands.onResults(onHandResults);
 
-  // 640x480 is optimal for real-time web tracking without buffer lag
+  // 1280x720 matches native 16:9 webcam sensors, completely preventing camera zoom-in / cropping!
   const camera = new Camera(video, {
     onFrame: async () => {
       // FRAME-DROP GUARD: If the model is still processing the previous frame,
@@ -427,8 +435,8 @@ function setupHands() {
         isProcessingFrame = false;
       }
     },
-    width: 640,
-    height: 480,
+    width: 1280,
+    height: 720,
   });
 
   camera.start().then(() => {
@@ -450,8 +458,8 @@ function mapLandmarkToCanvas(tip) {
   const mirroredX = 1 - tip.x;
   const rawY = tip.y;
 
-  const vw = video.videoWidth || 640;
-  const vh = video.videoHeight || 480;
+  const vw = video.videoWidth || 1280;
+  const vh = video.videoHeight || 720;
   const cw = canvas.width;
   const ch = canvas.height;
 
@@ -482,49 +490,22 @@ function mapLandmarkToCanvas(tip) {
 function onHandResults(results) {
   const detected = results.multiHandLandmarks || [];
   if (detected.length === 0) {
-    hands_data = [];
     return;
-  }
-
-  if (hands_data.length === 0) {
-    hands_data.push({
-      x: 0, y: 0, lastX: 0, lastY: 0, smoothX: -1, smoothY: -1, trail: []
-    });
-  } else if (hands_data.length > 1) {
-    hands_data.length = 1;
   }
 
   const tip = detected[0][8]; // Index fingertip = landmark 8
   const mapped = mapLandmarkToCanvas(tip);
-  const hd = hands_data[0];
 
-  if (hd.smoothX < 0) {
-    // First frame: snap instantly
-    hd.smoothX = mapped.x;
-    hd.smoothY = mapped.y;
-    hd.lastX = mapped.x;
-    hd.lastY = mapped.y;
-  } else {
-    hd.lastX = hd.smoothX;
-    hd.lastY = hd.smoothY;
+  playerHand.targetX = mapped.x;
+  playerHand.targetY = mapped.y;
+  playerHand.active = true;
+  playerHand.lastSeenTime = performance.now();
 
-    // DYNAMIC VELOCITY-ADAPTIVE SMOOTHING:
-    // Fast slashes (>20px): factor is 0.95 -> INSTANT response, zero drag/lag!
-    // Moderate movement (8-20px): factor is 0.75
-    // Holding still (<8px): factor is 0.40 -> filters camera sensor noise
-    const dist = Math.hypot(mapped.x - hd.smoothX, mapped.y - hd.smoothY);
-    const dynamicFactor = dist > 25 ? 0.95 : (dist > 10 ? 0.75 : 0.42);
-
-    hd.smoothX = lerp(hd.smoothX, mapped.x, dynamicFactor);
-    hd.smoothY = lerp(hd.smoothY, mapped.y, dynamicFactor);
-  }
-
-  hd.x = hd.smoothX;
-  hd.y = hd.smoothY;
-
-  if (gameState === 'playing') {
-    hd.trail.push({ x: hd.x, y: hd.y, age: 1.0 });
-    if (hd.trail.length > CONFIG.trailLength) hd.trail.shift();
+  if (playerHand.x < 0) {
+    playerHand.x = mapped.x;
+    playerHand.y = mapped.y;
+    playerHand.lastX = mapped.x;
+    playerHand.lastY = mapped.y;
   }
 }
 
@@ -628,18 +609,17 @@ function distToSegment(px, py, x1, y1, x2, y2) {
 //  SLICE DETECTION (Line-Segment Collision for Fast Motion)
 // ════════════════════════════════════════════════
 function checkSlices() {
-  for (const hd of hands_data) {
-    const speed = Math.hypot(hd.x - hd.lastX, hd.y - hd.lastY);
-    if (speed < 3.5) continue; // finger must be moving
+  if (!playerHand.active) return;
+  const speed = Math.hypot(playerHand.x - playerHand.lastX, playerHand.y - playerHand.lastY);
+  if (speed < 2.5) return; // finger must be moving
 
-    for (let i = fruits.length - 1; i >= 0; i--) {
-      const fruit = fruits[i];
-      if (fruit.sliced) continue;
+  for (let i = fruits.length - 1; i >= 0; i--) {
+    const fruit = fruits[i];
+    if (fruit.sliced) continue;
 
-      // LINE INTERSECTION: Checks the entire path carved between previous frame and current frame!
-      // This guarantees that even fast swiping across the screen never teleports through fruits.
-      const dist = distToSegment(fruit.x, fruit.y, hd.lastX, hd.lastY, hd.x, hd.y);
-      if (dist < CONFIG.sliceRadius + fruit.size * 0.5) {
+    // LINE INTERSECTION: Checks the entire path carved by the smooth 60 FPS interpolated blade!
+    const dist = distToSegment(fruit.x, fruit.y, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
+    if (dist < CONFIG.sliceRadius + fruit.size * 0.5) {
         fruit.sliced = true;
 
         if (fruit.isBomb) {
@@ -716,7 +696,6 @@ function checkSlices() {
         }
       }
     }
-  }
 }
 
 // ════════════════════════════════════════════════
@@ -782,6 +761,30 @@ function gameLoop(timestamp) {
     canvas.height = window.innerHeight;
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // ── 60 FPS Smooth Hand Interpolation ──
+  if (playerHand.active) {
+    if (performance.now() - playerHand.lastSeenTime > 400) {
+      playerHand.active = false;
+    } else {
+      playerHand.lastX = playerHand.x;
+      playerHand.lastY = playerHand.y;
+
+      const dx = playerHand.targetX - playerHand.x;
+      const dy = playerHand.targetY - playerHand.y;
+      const dist = Math.hypot(dx, dy);
+
+      // Adaptive follow: Fast swipes follow tightly (0.82), slow motion glides smoothly (0.42)
+      const followRate = dist > 35 ? 0.82 : (dist > 12 ? 0.6 : 0.42);
+      playerHand.x += dx * followRate;
+      playerHand.y += dy * followRate;
+
+      if (gameState === 'playing' && dist > 1.2) {
+        playerHand.trail.push({ x: playerHand.x, y: playerHand.y, age: 1.0 });
+        if (playerHand.trail.length > 22) playerHand.trail.shift();
+      }
+    }
+  }
 
   if (gameState === 'playing') {
     // Difficulty ramp
@@ -913,65 +916,67 @@ function gameLoop(timestamp) {
     ctx.restore();
   }
 
-  // ── Draw trail & cursor for player's hand ──
-  const tc = { outer: [255, 255, 255], inner: [255, 240, 200], glow: '#ffdd57', cursor: '#ffdd57' };
-
-  if (hands_data.length > 0) {
-    const hd = hands_data[0];
-    const trail = hd.trail;
+  // ── Draw Smooth Golden Blade Ribbon & Cursor ──
+  if (playerHand.active || playerHand.trail.length > 0) {
+    const trail = playerHand.trail;
 
     // Age & prune trail
     for (let i = 0; i < trail.length; i++) trail[i].age -= CONFIG.trailFadeSpeed;
     while (trail.length > 0 && trail[0].age <= 0) trail.shift();
 
-    if (trail.length > 1) {
+    if (trail.length > 2) {
       ctx.save();
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      for (let i = 1; i < trail.length; i++) {
-        const prev = trail[i - 1];
-        const curr = trail[i];
-        const alpha = Math.max(0, curr.age);
-        const width = alpha * 14 + 3;
-
-        // Outer glow
-        ctx.strokeStyle = `rgba(${tc.outer[0]}, ${tc.outer[1]}, ${tc.outer[2]}, ${alpha * 0.35})`;
-        ctx.lineWidth = width + 10;
-        ctx.beginPath();
-        ctx.moveTo(prev.x, prev.y);
-        ctx.lineTo(curr.x, curr.y);
-        ctx.stroke();
-
-        // Inner bright line
-        ctx.strokeStyle = `rgba(${tc.inner[0]}, ${tc.inner[1]}, ${tc.inner[2]}, ${alpha * 0.9})`;
-        ctx.lineWidth = width;
-        ctx.shadowColor = tc.glow;
-        ctx.shadowBlur = 10;
-        ctx.beginPath();
-        ctx.moveTo(prev.x, prev.y);
-        ctx.lineTo(curr.x, curr.y);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
+      // 1. Outer golden aura ribbon (Bezier smoothed)
+      ctx.beginPath();
+      ctx.moveTo(trail[0].x, trail[0].y);
+      for (let i = 1; i < trail.length - 1; i++) {
+        const mx = (trail[i].x + trail[i + 1].x) / 2;
+        const my = (trail[i].y + trail[i + 1].y) / 2;
+        ctx.quadraticCurveTo(trail[i].x, trail[i].y, mx, my);
       }
+      ctx.lineTo(trail[trail.length - 1].x, trail[trail.length - 1].y);
+      ctx.strokeStyle = 'rgba(255, 215, 0, 0.32)';
+      ctx.lineWidth = 22;
+      ctx.stroke();
+
+      // 2. Inner white-hot neon blade core (Bezier smoothed)
+      ctx.beginPath();
+      ctx.moveTo(trail[0].x, trail[0].y);
+      for (let i = 1; i < trail.length - 1; i++) {
+        const mx = (trail[i].x + trail[i + 1].x) / 2;
+        const my = (trail[i].y + trail[i + 1].y) / 2;
+        ctx.quadraticCurveTo(trail[i].x, trail[i].y, mx, my);
+      }
+      ctx.lineTo(trail[trail.length - 1].x, trail[trail.length - 1].y);
+      ctx.strokeStyle = '#fffbf0';
+      ctx.lineWidth = 8;
+      ctx.shadowColor = '#ffd000';
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
       ctx.restore();
     }
 
-    // Fingertip cursor
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(hd.x, hd.y, 13, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.shadowColor = '#fff';
-    ctx.shadowBlur = 12;
-    ctx.fill();
+    // Glowing fingertip cursor
+    if (playerHand.active) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(playerHand.x, playerHand.y, 14, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.shadowColor = '#fff';
+      ctx.shadowBlur = 12;
+      ctx.fill();
 
-    ctx.beginPath();
-    ctx.arc(hd.x, hd.y, 5, 0, Math.PI * 2);
-    ctx.fillStyle = tc.cursor;
-    ctx.shadowBlur = 0;
-    ctx.fill();
-    ctx.restore();
+      ctx.beginPath();
+      ctx.arc(playerHand.x, playerHand.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffdd57';
+      ctx.shadowBlur = 0;
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   // Screen flash effect
@@ -997,7 +1002,7 @@ function startGame() {
   fruits = [];
   slicedHalves = [];
   particles = [];
-  for (const hd of hands_data) hd.trail = [];
+  playerHand.trail = [];
   comboCount = 0;
   totalSliced = 0;
   totalMissed = 0;
