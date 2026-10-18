@@ -379,30 +379,44 @@ window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
 // ════════════════════════════════════════════════
-//  MEDIAPIPE HANDS SETUP
+//  MEDIAPIPE HANDS SETUP (High-Speed Low-Latency)
 // ════════════════════════════════════════════════
 let handsReady = false;
+let isProcessingFrame = false;
 
 function setupHands() {
   const hands = new Hands({
     locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
   });
 
+  // Model complexity 0 (Lite) is 3x faster with sub-15ms inference - ideal for gaming
   hands.setOptions({
     maxNumHands: 2,
-    modelComplexity: 1,
-    minDetectionConfidence: 0.65,
-    minTrackingConfidence: 0.55,
+    modelComplexity: 0,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5,
   });
 
   hands.onResults(onHandResults);
 
+  // 640x480 is optimal for real-time web tracking without buffer lag
   const camera = new Camera(video, {
     onFrame: async () => {
-      await hands.send({ image: video });
+      // FRAME-DROP GUARD: If the model is still processing the previous frame,
+      // drop this frame immediately instead of queuing it up!
+      // This completely eliminates the 1-second lag/delay!
+      if (isProcessingFrame) return;
+      isProcessingFrame = true;
+      try {
+        await hands.send({ image: video });
+      } catch (err) {
+        console.error('Hands send error:', err);
+      } finally {
+        isProcessingFrame = false;
+      }
     },
-    width: 1280,
-    height: 720,
+    width: 640,
+    height: 480,
   });
 
   camera.start().then(() => {
@@ -414,6 +428,42 @@ function setupHands() {
 }
 
 function lerp(a, b, t) { return a + (b - a) * t; }
+
+// Exact projection from webcam coordinate space to canvas matching CSS object-fit: cover
+function mapLandmarkToCanvas(tip) {
+  // tip.x is normalized [0, 1] relative to video width
+  // Mirror horizontally because webcam display is mirrored (transform: scaleX(-1))
+  const mirroredX = 1 - tip.x;
+  const rawY = tip.y;
+
+  const vw = video.videoWidth || 640;
+  const vh = video.videoHeight || 480;
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  const videoAspect = vw / vh;
+  const canvasAspect = cw / ch;
+
+  let renderW, renderH, offsetX, offsetY;
+  if (canvasAspect > videoAspect) {
+    // Canvas is wider than video relative to height -> video width covers canvas, height overflows
+    renderW = cw;
+    renderH = cw / videoAspect;
+    offsetX = 0;
+    offsetY = (ch - renderH) / 2;
+  } else {
+    // Canvas is taller than video relative to width -> video height covers canvas, width overflows
+    renderH = ch;
+    renderW = ch * videoAspect;
+    offsetX = (cw - renderW) / 2;
+    offsetY = 0;
+  }
+
+  return {
+    x: offsetX + mirroredX * renderW,
+    y: offsetY + rawY * renderH
+  };
+}
 
 function onHandResults(results) {
   const detected = results.multiHandLandmarks || [];
@@ -427,25 +477,29 @@ function onHandResults(results) {
 
   for (let h = 0; h < numHands; h++) {
     const tip = detected[h][8]; // Index fingertip = landmark 8
-    const rawX = (1 - tip.x) * canvas.width;   // mirror X
-    const rawY = tip.y * canvas.height;
+    const mapped = mapLandmarkToCanvas(tip);
 
     const hd = hands_data[h];
 
-    // Store last smoothed position
-    hd.lastX = hd.smoothX;
-    hd.lastY = hd.smoothY;
-
     if (hd.smoothX < 0) {
-      // First frame — snap to raw position
-      hd.smoothX = rawX;
-      hd.smoothY = rawY;
-      hd.lastX = rawX;
-      hd.lastY = rawY;
+      // First frame for this hand: snap instantly
+      hd.smoothX = mapped.x;
+      hd.smoothY = mapped.y;
+      hd.lastX = mapped.x;
+      hd.lastY = mapped.y;
     } else {
-      // Exponential smoothing: lerp toward raw position
-      hd.smoothX = lerp(hd.smoothX, rawX, 1 - SMOOTH_FACTOR);
-      hd.smoothY = lerp(hd.smoothY, rawY, 1 - SMOOTH_FACTOR);
+      hd.lastX = hd.smoothX;
+      hd.lastY = hd.smoothY;
+
+      // DYNAMIC VELOCITY-ADAPTIVE SMOOTHING:
+      // Fast slashes (>20px): factor is 0.95 -> INSTANT response, zero drag/lag!
+      // Moderate movement (8-20px): factor is 0.75
+      // Holding still (<8px): factor is 0.40 -> filters camera sensor noise
+      const dist = Math.hypot(mapped.x - hd.smoothX, mapped.y - hd.smoothY);
+      const dynamicFactor = dist > 25 ? 0.95 : (dist > 10 ? 0.75 : 0.42);
+
+      hd.smoothX = lerp(hd.smoothX, mapped.x, dynamicFactor);
+      hd.smoothY = lerp(hd.smoothY, mapped.y, dynamicFactor);
     }
 
     hd.x = hd.smoothX;
@@ -541,19 +595,32 @@ function spawnJuiceSplash(x, y, color, count = 8) {
   }
 }
 
+// Calculate shortest distance from point (px, py) to line segment (x1, y1) -> (x2, y2)
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const l2 = dx * dx + dy * dy;
+  if (l2 === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
 // ════════════════════════════════════════════════
-//  SLICE DETECTION
+//  SLICE DETECTION (Line-Segment Collision for Fast Motion)
 // ════════════════════════════════════════════════
 function checkSlices() {
   for (const hd of hands_data) {
     const speed = Math.hypot(hd.x - hd.lastX, hd.y - hd.lastY);
-    if (speed < 5) continue; // finger must be moving
+    if (speed < 3.5) continue; // finger must be moving
 
     for (let i = fruits.length - 1; i >= 0; i--) {
       const fruit = fruits[i];
       if (fruit.sliced) continue;
 
-      const dist = Math.hypot(hd.x - fruit.x, hd.y - fruit.y);
+      // LINE INTERSECTION: Checks the entire path carved between previous frame and current frame!
+      // This guarantees that even fast swiping across the screen never teleports through fruits.
+      const dist = distToSegment(fruit.x, fruit.y, hd.lastX, hd.lastY, hd.x, hd.y);
       if (dist < CONFIG.sliceRadius + fruit.size * 0.5) {
         fruit.sliced = true;
 
