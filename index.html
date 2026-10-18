@@ -319,6 +319,9 @@ function playSliceSound() {
     gain.gain.exponentialRampToValueAtTime(0.005, now + 0.1);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
+    osc.onended = () => {
+      try { osc.disconnect(); gain.disconnect(); } catch (e) {}
+    };
     osc.start(now);
     osc.stop(now + 0.11);
   } catch (e) {}
@@ -337,6 +340,9 @@ function playBombSound() {
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
+    osc.onended = () => {
+      try { osc.disconnect(); gain.disconnect(); } catch (e) {}
+    };
     osc.start(now);
     osc.stop(now + 0.36);
   } catch (e) {}
@@ -356,6 +362,9 @@ function playComboSound(count) {
     gain.gain.exponentialRampToValueAtTime(0.005, now + 0.2);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
+    osc.onended = () => {
+      try { osc.disconnect(); gain.disconnect(); } catch (e) {}
+    };
     osc.start(now);
     osc.stop(now + 0.21);
   } catch (e) {}
@@ -383,8 +392,12 @@ resizeCanvas();
 // ════════════════════════════════════════════════
 let handsReady = false;
 let isProcessingFrame = false;
+let handsInstance = null;
+let cameraInstance = null;
 
 function setupHands() {
+  if (handsInstance) return handsInstance;
+
   const hands = new Hands({
     locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
   });
@@ -424,6 +437,8 @@ function setupHands() {
     loadingText.textContent = 'Camera ready!';
   });
 
+  handsInstance = hands;
+  cameraInstance = camera;
   return hands;
 }
 
@@ -562,7 +577,8 @@ function spawnFruit() {
 // ════════════════════════════════════════════════
 //  PARTICLES
 // ════════════════════════════════════════════════
-function spawnParticles(x, y, color, count = 12) {
+function spawnParticles(x, y, color, count = 10) {
+  if (particles.length > 70) particles.splice(0, particles.length - 60);
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 2 + Math.random() * 5;
@@ -578,7 +594,8 @@ function spawnParticles(x, y, color, count = 12) {
   }
 }
 
-function spawnJuiceSplash(x, y, color, count = 8) {
+function spawnJuiceSplash(x, y, color, count = 6) {
+  if (particles.length > 70) particles.splice(0, particles.length - 60);
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 1 + Math.random() * 3;
@@ -755,7 +772,14 @@ function gameLoop(timestamp) {
   const dt = Math.min(timestamp - lastTime, 50); // cap delta
   lastTime = timestamp;
 
-  resizeCanvas();
+  // CRITICAL PERFORMANCE FIX:
+  // Only resize the canvas when window dimensions actually change!
+  // Calling resizeCanvas() 60 times/sec was destroying and re-allocating full-screen GPU textures every frame,
+  // causing severe memory thrashing and progressive FPS degradation over time.
+  if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (gameState === 'playing') {
@@ -787,9 +811,9 @@ function gameLoop(timestamp) {
       f.y += f.vy;
       f.rotation += f.rotSpeed;
 
-      // Missed — fell below screen
-      if (f.y > canvas.height + f.size * 2) {
-        if (!f.isBomb && gameState === 'playing') {
+      // Missed — fell below screen or drifted far out of bounds
+      if (f.y > canvas.height + f.size * 2 || f.x < -300 || f.x > canvas.width + 300) {
+        if (!f.isBomb && gameState === 'playing' && f.y > canvas.height) {
           totalMissed++;
           // Lose a life for missing fruit
           lives--;
@@ -811,7 +835,7 @@ function gameLoop(timestamp) {
 
       // Glow
       ctx.shadowColor = f.type.color;
-      ctx.shadowBlur = 18;
+      ctx.shadowBlur = 10;
       ctx.fillText(f.type.emoji, 0, 0);
       ctx.shadowBlur = 0;
       ctx.restore();
@@ -926,7 +950,7 @@ function gameLoop(timestamp) {
         ctx.strokeStyle = `rgba(${tc.inner[0]}, ${tc.inner[1]}, ${tc.inner[2]}, ${alpha * 0.9})`;
         ctx.lineWidth = width;
         ctx.shadowColor = tc.glow;
-        ctx.shadowBlur = 18;
+        ctx.shadowBlur = 10;
         ctx.beginPath();
         ctx.moveTo(prev.x, prev.y);
         ctx.lineTo(curr.x, curr.y);
@@ -942,7 +966,7 @@ function gameLoop(timestamp) {
     ctx.arc(hd.x, hd.y, 13, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.shadowColor = '#fff';
-    ctx.shadowBlur = 22;
+    ctx.shadowBlur = 12;
     ctx.fill();
 
     ctx.beginPath();
