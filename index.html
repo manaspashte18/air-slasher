@@ -35,7 +35,8 @@
       position: absolute;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      z-index: 2;
+      z-index: 15;
+      pointer-events: none;
     }
 
     /* ── HUD ── */
@@ -162,6 +163,25 @@
       margin-bottom: 30px;
     }
 
+    #game-over-overlay {
+      background: rgba(5, 5, 15, 0.65);
+      backdrop-filter: blur(10px);
+    }
+
+    .gesture-hint {
+      margin-top: 16px;
+      font-size: 16px;
+      font-weight: 600;
+      color: #ffd93d;
+      letter-spacing: 0.5px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+      animation: pulseHint 2s infinite ease-in-out;
+    }
+    @keyframes pulseHint {
+      0%, 100% { opacity: 0.75; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.03); }
+    }
+
     /* Loading spinner */
     .spinner {
       width: 40px; height: 40px;
@@ -217,6 +237,7 @@
     <div class="final-score" id="final-score">0</div>
     <div class="stats" id="final-stats"></div>
     <button id="restart-btn">🔄 Play Again</button>
+    <div class="gesture-hint">✋ Hold hand over button (or swipe it) to restart</div>
   </div>
 </div>
 
@@ -294,6 +315,7 @@ let totalMissed = 0;
 let gameStartTime = 0;
 let spawnTimer = 0;
 let currentSpawnInterval = CONFIG.fruitSpawnInterval;
+let holdToRestartTimer = 0;
 
 // ── Web Audio Synthesizer (Instant SFX without external audio files) ──
 let audioCtx = null;
@@ -979,6 +1001,75 @@ function gameLoop(timestamp) {
     }
   }
 
+  // ── Touchless Hand Gesture Restart ──
+  if (gameState === 'over' && !gameOverOv.classList.contains('hidden')) {
+    const btnRect = restartBtn.getBoundingClientRect();
+    if (btnRect.width > 0) {
+      const bx = btnRect.left + btnRect.width / 2;
+      const by = btnRect.top + btnRect.height / 2;
+      const ringRadius = Math.max(btnRect.width, btnRect.height) * 0.52 + 10;
+
+      let isHovering = false;
+      if (playerHand.active) {
+        const distToCenter = Math.hypot(playerHand.x - bx, playerHand.y - by);
+        // Direct hover check: fills up smoothly when hand is held over button
+        if (distToCenter < ringRadius + 15) {
+          isHovering = true;
+          holdToRestartTimer += dt / 1100; // takes ~1.1s of holding to restart
+          if (holdToRestartTimer >= 1.0) {
+            holdToRestartTimer = 0;
+            playComboSound(5);
+            startGame();
+            return;
+          }
+        } else {
+          // Swipe to restart check: instant trigger if player slashes through button
+          const swipeDist = distToSegment(bx, by, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
+          const swipeSpeed = Math.hypot(playerHand.x - playerHand.lastX, playerHand.y - playerHand.lastY);
+          if (swipeSpeed > 8 && swipeDist < ringRadius + 15) {
+            holdToRestartTimer = 0;
+            playSliceSound();
+            playComboSound(4);
+            startGame();
+            return;
+          }
+        }
+      }
+
+      if (!isHovering) {
+        holdToRestartTimer = Math.max(0, holdToRestartTimer - dt / 350);
+      }
+
+      // Draw radial target ring around button
+      ctx.save();
+      // Outer subtle guide circle
+      ctx.beginPath();
+      ctx.arc(bx, by, ringRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = isHovering ? 'rgba(255, 215, 0, 0.45)' : 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Active filling progress arc
+      if (holdToRestartTimer > 0) {
+        ctx.beginPath();
+        ctx.arc(bx, by, ringRadius, -Math.PI / 2, -Math.PI / 2 + holdToRestartTimer * Math.PI * 2);
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 7;
+        ctx.shadowColor = '#ffc107';
+        ctx.shadowBlur = 14;
+        ctx.stroke();
+
+        const pct = Math.floor(holdToRestartTimer * 100);
+        ctx.font = 'bold 15px Segoe UI, sans-serif';
+        ctx.fillStyle = '#ffea00';
+        ctx.textAlign = 'center';
+        ctx.shadowBlur = 8;
+        ctx.fillText(`${pct}%`, bx, by + ringRadius + 24);
+      }
+      ctx.restore();
+    }
+  }
+
   // Screen flash effect
   if (flashAlpha > 0) {
     ctx.save();
@@ -997,6 +1088,7 @@ function gameLoop(timestamp) {
 // ════════════════════════════════════════════════
 function startGame() {
   initAudio();
+  holdToRestartTimer = 0;
   score = 0;
   lives = CONFIG.maxLives;
   fruits = [];
@@ -1022,6 +1114,7 @@ function startGame() {
 
 function endGame() {
   gameState = 'over';
+  holdToRestartTimer = 0;
 
   if (score > bestScore) {
     bestScore = score;
