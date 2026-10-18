@@ -232,7 +232,7 @@ const CONFIG = {
   maxLives: 3,
   fruitSpawnInterval: 900,     // ms — gets faster over time
   minSpawnInterval: 400,
-  fruitSpeed: { min: 14, max: 20 },
+  fruitSpeed: { min: 7, max: 10 },
   bombChance: 0.12,            // 12 % chance a spawn is a bomb
   sliceRadius: 70,             // px — how close finger must be
   trailLength: 18,
@@ -411,7 +411,7 @@ function spawnFruit() {
   fruits.push({
     x, y: canvas.height + size,
     vx, vy,
-    gravity: 0.025 + Math.random() * 0.015,
+    gravity: 0.055 + Math.random() * 0.025,
     size,
     type,
     isBomb,
