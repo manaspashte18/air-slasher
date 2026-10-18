@@ -286,16 +286,18 @@ let bestScore = parseInt(localStorage.getItem('airslasher_best') || '0');
 let lives = CONFIG.maxLives;
 let fruits = [];
 let particles = [];
-let sliceTrail = [];      // [{x, y, age}]
 let comboCount = 0;
 let lastSliceTime = 0;
 let totalSliced = 0;
 let totalMissed = 0;
 let gameStartTime = 0;
-let fingerPos = null;     // {x, y} in canvas coords
-let lastFingerPos = null;
 let spawnTimer = 0;
 let currentSpawnInterval = CONFIG.fruitSpawnInterval;
+
+// ── Multi-hand tracking with smoothing ──
+const SMOOTH_FACTOR = 0.45; // 0 = raw (jittery), 1 = frozen. 0.45 feels responsive yet smooth.
+// Each hand: { x, y, lastX, lastY, smoothX, smoothY, trail: [{x,y,age}] }
+let hands_data = [];  // up to 2 entries
 
 bestEl.textContent = bestScore;
 
@@ -320,10 +322,10 @@ function setupHands() {
   });
 
   hands.setOptions({
-    maxNumHands: 1,
+    maxNumHands: 2,
     modelComplexity: 1,
-    minDetectionConfidence: 0.7,
-    minTrackingConfidence: 0.6,
+    minDetectionConfidence: 0.65,
+    minTrackingConfidence: 0.55,
   });
 
   hands.onResults(onHandResults);
@@ -344,26 +346,48 @@ function setupHands() {
   return hands;
 }
 
+function lerp(a, b, t) { return a + (b - a) * t; }
+
 function onHandResults(results) {
-  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-    fingerPos = null;
-    return;
-  }
+  const detected = results.multiHandLandmarks || [];
+  const numHands = detected.length;
 
-  const landmarks = results.multiHandLandmarks[0];
-  // Index fingertip = landmark 8
-  const tip = landmarks[8];
+  // Resize hands_data to match detected hands
+  while (hands_data.length > numHands) hands_data.pop();
+  while (hands_data.length < numHands) hands_data.push({
+    x: 0, y: 0, lastX: 0, lastY: 0, smoothX: -1, smoothY: -1, trail: []
+  });
 
-  // MediaPipe gives normalized coords (0-1); mirror X because video is mirrored
-  const x = (1 - tip.x) * canvas.width;
-  const y = tip.y * canvas.height;
+  for (let h = 0; h < numHands; h++) {
+    const tip = detected[h][8]; // Index fingertip = landmark 8
+    const rawX = (1 - tip.x) * canvas.width;   // mirror X
+    const rawY = tip.y * canvas.height;
 
-  lastFingerPos = fingerPos ? { ...fingerPos } : { x, y };
-  fingerPos = { x, y };
+    const hd = hands_data[h];
 
-  if (gameState === 'playing') {
-    sliceTrail.push({ x, y, age: 1.0 });
-    if (sliceTrail.length > CONFIG.trailLength) sliceTrail.shift();
+    // Store last smoothed position
+    hd.lastX = hd.smoothX;
+    hd.lastY = hd.smoothY;
+
+    if (hd.smoothX < 0) {
+      // First frame — snap to raw position
+      hd.smoothX = rawX;
+      hd.smoothY = rawY;
+      hd.lastX = rawX;
+      hd.lastY = rawY;
+    } else {
+      // Exponential smoothing: lerp toward raw position
+      hd.smoothX = lerp(hd.smoothX, rawX, 1 - SMOOTH_FACTOR);
+      hd.smoothY = lerp(hd.smoothY, rawY, 1 - SMOOTH_FACTOR);
+    }
+
+    hd.x = hd.smoothX;
+    hd.y = hd.smoothY;
+
+    if (gameState === 'playing') {
+      hd.trail.push({ x: hd.x, y: hd.y, age: 1.0 });
+      if (hd.trail.length > CONFIG.trailLength) hd.trail.shift();
+    }
   }
 }
 
@@ -439,65 +463,50 @@ function spawnJuiceSplash(x, y, color, count = 8) {
 //  SLICE DETECTION
 // ════════════════════════════════════════════════
 function checkSlices() {
-  if (!fingerPos || !lastFingerPos) return;
+  for (const hd of hands_data) {
+    const speed = Math.hypot(hd.x - hd.lastX, hd.y - hd.lastY);
+    if (speed < 5) continue; // finger must be moving
 
-  const speed = Math.hypot(fingerPos.x - lastFingerPos.x, fingerPos.y - lastFingerPos.y);
-  if (speed < 6) return; // finger must be moving
+    for (const fruit of fruits) {
+      if (fruit.sliced) continue;
 
-  for (const fruit of fruits) {
-    if (fruit.sliced) continue;
+      const dist = Math.hypot(hd.x - fruit.x, hd.y - fruit.y);
+      if (dist < CONFIG.sliceRadius + fruit.size * 0.5) {
+        fruit.sliced = true;
 
-    const dist = Math.hypot(fingerPos.x - fruit.x, fingerPos.y - fruit.y);
-    if (dist < CONFIG.sliceRadius + fruit.size * 0.5) {
-      fruit.sliced = true;
-
-      if (fruit.isBomb) {
-        // Hit a bomb!
-        lives--;
-        updateLives();
-        spawnParticles(fruit.x, fruit.y, '#636e72', 20);
-        spawnParticles(fruit.x, fruit.y, '#e17055', 15);
-
-        // Screen flash
-        flashScreen('#ff0000');
-
-        if (lives <= 0) {
-          endGame();
-        }
-      } else {
-        // Sliced a fruit!
-        const now = Date.now();
-        if (now - lastSliceTime < CONFIG.comboWindow) {
-          comboCount++;
+        if (fruit.isBomb) {
+          lives--;
+          updateLives();
+          spawnParticles(fruit.x, fruit.y, '#636e72', 20);
+          spawnParticles(fruit.x, fruit.y, '#e17055', 15);
+          flashScreen('#ff0000');
+          if (lives <= 0) endGame();
         } else {
-          comboCount = 1;
+          const now = Date.now();
+          if (now - lastSliceTime < CONFIG.comboWindow) {
+            comboCount++;
+          } else {
+            comboCount = 1;
+          }
+          lastSliceTime = now;
+
+          const points = comboCount >= 3 ? comboCount * 2 : 1;
+          score += points;
+          totalSliced++;
+          scoreEl.textContent = score;
+
+          if (comboCount >= 3) showCombo(comboCount);
+
+          spawnParticles(fruit.x, fruit.y, fruit.type.color, 14);
+          spawnJuiceSplash(fruit.x, fruit.y, fruit.type.juice, 10);
+
+          particles.push({
+            x: fruit.x, y: fruit.y - 20,
+            vx: 0, vy: -1.5,
+            life: 1.0, decay: 0.018, size: 0,
+            color: '#fff', isText: true, text: `+${points}`,
+          });
         }
-        lastSliceTime = now;
-
-        const points = comboCount >= 3 ? comboCount * 2 : 1;
-        score += points;
-        totalSliced++;
-        scoreEl.textContent = score;
-
-        if (comboCount >= 3) {
-          showCombo(comboCount);
-        }
-
-        // Juice & particles
-        spawnParticles(fruit.x, fruit.y, fruit.type.color, 14);
-        spawnJuiceSplash(fruit.x, fruit.y, fruit.type.juice, 10);
-
-        // Floating score text
-        particles.push({
-          x: fruit.x, y: fruit.y - 20,
-          vx: 0, vy: -1.5,
-          life: 1.0,
-          decay: 0.018,
-          size: 0,
-          color: '#fff',
-          isText: true,
-          text: `+${points}`,
-        });
       }
     }
   }
@@ -559,10 +568,6 @@ function gameLoop(timestamp) {
 
   resizeCanvas();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Dim webcam overlay
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   if (gameState === 'playing') {
     // Difficulty ramp
@@ -681,38 +686,45 @@ function gameLoop(timestamp) {
     ctx.restore();
   }
 
-  // Draw slash trail
-  if (sliceTrail.length > 1) {
-    for (let i = 0; i < sliceTrail.length; i++) {
-      sliceTrail[i].age -= CONFIG.trailFadeSpeed;
-    }
-    // Remove dead segments
-    while (sliceTrail.length > 0 && sliceTrail[0].age <= 0) sliceTrail.shift();
+  // ── Draw trails & cursors for ALL hands ──
+  const trailColors = [
+    { outer: [255, 255, 255], inner: [255, 240, 200], glow: '#ffdd57', cursor: '#ffdd57' },
+    { outer: [200, 255, 255], inner: [100, 230, 255], glow: '#00e5ff', cursor: '#00e5ff' },
+  ];
 
-    if (sliceTrail.length > 1) {
+  for (let h = 0; h < hands_data.length; h++) {
+    const hd = hands_data[h];
+    const tc = trailColors[h] || trailColors[0];
+    const trail = hd.trail;
+
+    // Age & prune trail
+    for (let i = 0; i < trail.length; i++) trail[i].age -= CONFIG.trailFadeSpeed;
+    while (trail.length > 0 && trail[0].age <= 0) trail.shift();
+
+    if (trail.length > 1) {
       ctx.save();
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      for (let i = 1; i < sliceTrail.length; i++) {
-        const prev = sliceTrail[i - 1];
-        const curr = sliceTrail[i];
-        const alpha = curr.age;
-        const width = alpha * 12 + 2;
+      for (let i = 1; i < trail.length; i++) {
+        const prev = trail[i - 1];
+        const curr = trail[i];
+        const alpha = Math.max(0, curr.age);
+        const width = alpha * 14 + 3;
 
         // Outer glow
-        ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.3})`;
-        ctx.lineWidth = width + 8;
+        ctx.strokeStyle = `rgba(${tc.outer[0]}, ${tc.outer[1]}, ${tc.outer[2]}, ${alpha * 0.35})`;
+        ctx.lineWidth = width + 10;
         ctx.beginPath();
         ctx.moveTo(prev.x, prev.y);
         ctx.lineTo(curr.x, curr.y);
         ctx.stroke();
 
         // Inner bright line
-        ctx.strokeStyle = `rgba(255, 240, 200, ${alpha * 0.9})`;
+        ctx.strokeStyle = `rgba(${tc.inner[0]}, ${tc.inner[1]}, ${tc.inner[2]}, ${alpha * 0.9})`;
         ctx.lineWidth = width;
-        ctx.shadowColor = '#ffdd57';
-        ctx.shadowBlur = 15;
+        ctx.shadowColor = tc.glow;
+        ctx.shadowBlur = 18;
         ctx.beginPath();
         ctx.moveTo(prev.x, prev.y);
         ctx.lineTo(curr.x, curr.y);
@@ -721,21 +733,20 @@ function gameLoop(timestamp) {
       }
       ctx.restore();
     }
-  }
 
-  // Draw fingertip cursor
-  if (fingerPos) {
+    // Fingertip cursor
     ctx.save();
     ctx.beginPath();
-    ctx.arc(fingerPos.x, fingerPos.y, 10, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.arc(hd.x, hd.y, 13, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.shadowColor = '#fff';
-    ctx.shadowBlur = 20;
+    ctx.shadowBlur = 22;
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(fingerPos.x, fingerPos.y, 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffdd57';
+    ctx.arc(hd.x, hd.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = tc.cursor;
+    ctx.shadowBlur = 0;
     ctx.fill();
     ctx.restore();
   }
@@ -761,7 +772,7 @@ function startGame() {
   lives = CONFIG.maxLives;
   fruits = [];
   particles = [];
-  sliceTrail = [];
+  for (const hd of hands_data) hd.trail = [];
   comboCount = 0;
   totalSliced = 0;
   totalMissed = 0;
