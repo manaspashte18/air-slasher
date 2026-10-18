@@ -402,9 +402,9 @@ function setupHands() {
     locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
   });
 
-  // Model complexity 0 (Lite) is 3x faster with sub-15ms inference - ideal for gaming
+  // Single-hand tracking: cuts model workload by ~50% for maximum 60fps tracking speed
   hands.setOptions({
-    maxNumHands: 2,
+    maxNumHands: 1,
     modelComplexity: 0,
     minDetectionConfidence: 0.5,
     minTrackingConfidence: 0.5,
@@ -417,7 +417,6 @@ function setupHands() {
     onFrame: async () => {
       // FRAME-DROP GUARD: If the model is still processing the previous frame,
       // drop this frame immediately instead of queuing it up!
-      // This completely eliminates the 1-second lag/delay!
       if (isProcessingFrame) return;
       isProcessingFrame = true;
       try {
@@ -482,48 +481,50 @@ function mapLandmarkToCanvas(tip) {
 
 function onHandResults(results) {
   const detected = results.multiHandLandmarks || [];
-  const numHands = detected.length;
+  if (detected.length === 0) {
+    hands_data = [];
+    return;
+  }
 
-  // Resize hands_data to match detected hands
-  while (hands_data.length > numHands) hands_data.pop();
-  while (hands_data.length < numHands) hands_data.push({
-    x: 0, y: 0, lastX: 0, lastY: 0, smoothX: -1, smoothY: -1, trail: []
-  });
+  if (hands_data.length === 0) {
+    hands_data.push({
+      x: 0, y: 0, lastX: 0, lastY: 0, smoothX: -1, smoothY: -1, trail: []
+    });
+  } else if (hands_data.length > 1) {
+    hands_data.length = 1;
+  }
 
-  for (let h = 0; h < numHands; h++) {
-    const tip = detected[h][8]; // Index fingertip = landmark 8
-    const mapped = mapLandmarkToCanvas(tip);
+  const tip = detected[0][8]; // Index fingertip = landmark 8
+  const mapped = mapLandmarkToCanvas(tip);
+  const hd = hands_data[0];
 
-    const hd = hands_data[h];
+  if (hd.smoothX < 0) {
+    // First frame: snap instantly
+    hd.smoothX = mapped.x;
+    hd.smoothY = mapped.y;
+    hd.lastX = mapped.x;
+    hd.lastY = mapped.y;
+  } else {
+    hd.lastX = hd.smoothX;
+    hd.lastY = hd.smoothY;
 
-    if (hd.smoothX < 0) {
-      // First frame for this hand: snap instantly
-      hd.smoothX = mapped.x;
-      hd.smoothY = mapped.y;
-      hd.lastX = mapped.x;
-      hd.lastY = mapped.y;
-    } else {
-      hd.lastX = hd.smoothX;
-      hd.lastY = hd.smoothY;
+    // DYNAMIC VELOCITY-ADAPTIVE SMOOTHING:
+    // Fast slashes (>20px): factor is 0.95 -> INSTANT response, zero drag/lag!
+    // Moderate movement (8-20px): factor is 0.75
+    // Holding still (<8px): factor is 0.40 -> filters camera sensor noise
+    const dist = Math.hypot(mapped.x - hd.smoothX, mapped.y - hd.smoothY);
+    const dynamicFactor = dist > 25 ? 0.95 : (dist > 10 ? 0.75 : 0.42);
 
-      // DYNAMIC VELOCITY-ADAPTIVE SMOOTHING:
-      // Fast slashes (>20px): factor is 0.95 -> INSTANT response, zero drag/lag!
-      // Moderate movement (8-20px): factor is 0.75
-      // Holding still (<8px): factor is 0.40 -> filters camera sensor noise
-      const dist = Math.hypot(mapped.x - hd.smoothX, mapped.y - hd.smoothY);
-      const dynamicFactor = dist > 25 ? 0.95 : (dist > 10 ? 0.75 : 0.42);
+    hd.smoothX = lerp(hd.smoothX, mapped.x, dynamicFactor);
+    hd.smoothY = lerp(hd.smoothY, mapped.y, dynamicFactor);
+  }
 
-      hd.smoothX = lerp(hd.smoothX, mapped.x, dynamicFactor);
-      hd.smoothY = lerp(hd.smoothY, mapped.y, dynamicFactor);
-    }
+  hd.x = hd.smoothX;
+  hd.y = hd.smoothY;
 
-    hd.x = hd.smoothX;
-    hd.y = hd.smoothY;
-
-    if (gameState === 'playing') {
-      hd.trail.push({ x: hd.x, y: hd.y, age: 1.0 });
-      if (hd.trail.length > CONFIG.trailLength) hd.trail.shift();
-    }
+  if (gameState === 'playing') {
+    hd.trail.push({ x: hd.x, y: hd.y, age: 1.0 });
+    if (hd.trail.length > CONFIG.trailLength) hd.trail.shift();
   }
 }
 
@@ -912,15 +913,11 @@ function gameLoop(timestamp) {
     ctx.restore();
   }
 
-  // ── Draw trails & cursors for ALL hands ──
-  const trailColors = [
-    { outer: [255, 255, 255], inner: [255, 240, 200], glow: '#ffdd57', cursor: '#ffdd57' },
-    { outer: [200, 255, 255], inner: [100, 230, 255], glow: '#00e5ff', cursor: '#00e5ff' },
-  ];
+  // ── Draw trail & cursor for player's hand ──
+  const tc = { outer: [255, 255, 255], inner: [255, 240, 200], glow: '#ffdd57', cursor: '#ffdd57' };
 
-  for (let h = 0; h < hands_data.length; h++) {
-    const hd = hands_data[h];
-    const tc = trailColors[h] || trailColors[0];
+  if (hands_data.length > 0) {
+    const hd = hands_data[0];
     const trail = hd.trail;
 
     // Age & prune trail
