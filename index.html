@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>🍉 Air Slasher — Fingertip Katana v2.4</title>
+  <title>🍉 Air Slasher — Fingertip Katana v2.5</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -239,7 +239,7 @@
   </div>
 
   <div id="combo-display"></div>
-  <div id="version-badge">🗡️ v2.4 · Fingertip Katana</div>
+  <div id="version-badge">🗡️ v2.5 · Fingertip-Only Blade</div>
 
   <!-- Start Overlay -->
   <div id="start-overlay" class="overlay">
@@ -274,7 +274,7 @@ const CONFIG = {
   minSpawnInterval: 400,
   fruitSpeed: { min: 7, max: 10 },
   bombChance: 0.12,            // 12 % chance a spawn is a bomb
-  sliceRadius: 70,             // px — how close finger must be
+  sliceRadius: 25,             // px — tight precision: only knife tip cuts
   trailLength: 18,
   trailFadeSpeed: 0.06,
   comboWindow: 800,            // ms to chain combo slices
@@ -852,16 +852,10 @@ function checkSlices() {
     const fruit = fruits[i];
     if (fruit.sliced) continue;
 
-    // Check collision against:
-    // 1. Knife tip / Fingertip motion trajectory
-    // 2. Current blade segment from fingertip to guard
-    // 3. Guard motion trajectory
-    const dTip = distToSegment(fruit.x, fruit.y, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
-    const dBlade = distToSegment(fruit.x, fruit.y, playerHand.x, playerHand.y, playerHand.baseX, playerHand.baseY);
-    const dBase = distToSegment(fruit.x, fruit.y, playerHand.lastBaseX, playerHand.lastBaseY, playerHand.baseX, playerHand.baseY);
-    const dist = Math.min(dTip, dBlade, dBase);
+    // ONLY the knife tip / index fingertip cuts the fruit (line segment of tip motion)
+    const dist = distToSegment(fruit.x, fruit.y, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
 
-    if (dist < CONFIG.sliceRadius + fruit.size * 0.5) {
+    if (dist < CONFIG.sliceRadius + fruit.size * 0.45) {
         fruit.sliced = true;
 
         if (fruit.isBomb) {
@@ -1255,10 +1249,8 @@ function gameLoop(timestamp) {
         } else {
           // Swipe to restart check: instant trigger if player slashes knife tip through button
           const swipeTip = distToSegment(bx, by, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
-          const swipeBlade = distToSegment(bx, by, playerHand.x, playerHand.y, playerHand.baseX, playerHand.baseY);
-          const swipeDist = Math.min(swipeTip, swipeBlade);
           const swipeSpeed = Math.hypot(playerHand.x - playerHand.lastX, playerHand.y - playerHand.lastY);
-          if (swipeSpeed > 7 && swipeDist < ringRadius + 18) {
+          if (swipeSpeed > 7 && swipeTip < ringRadius + 18) {
             holdToRestartTimer = 0;
             playSliceSound();
             playComboSound(4);
