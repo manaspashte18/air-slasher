@@ -693,7 +693,11 @@ function onHandResults(results) {
   // Hand angle: wrist → middle finger knuckle, rotated so blade points forward (along fingers)
   const wristPt = mapLandmarkToCanvas(lm[0]);
   const knucklePt = mapLandmarkToCanvas(lm[9]);
-  playerHand.targetAngle = Math.atan2(knucklePt.y - wristPt.y, knucklePt.x - wristPt.x) + Math.PI / 2;
+  // Hand angle: blade tip is at local (0, -bladeLen), so to point it in direction (dx, dy):
+  // We need angle = atan2(dx, -dy) where (dx,dy) = wrist→knuckle direction
+  const dxH = knucklePt.x - wristPt.x;
+  const dyH = knucklePt.y - wristPt.y;
+  playerHand.targetAngle = Math.atan2(dxH, -dyH);
 
   playerHand.targetX = mapped.x;
   playerHand.targetY = mapped.y;
