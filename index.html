@@ -526,7 +526,7 @@ function lerpAngle(a, b, t) {
 // ════════════════════════════════════════════════
 //  KNIFE DRAWING (Large katana blade anchored at palm center)
 // ════════════════════════════════════════════════
-const KNIFE_BLADE_LEN = 190;  // Global constant — used by drawKnife AND tip collision calc
+const KNIFE_BLADE_LEN = 320;  // Global constant — used by drawKnife AND tip collision calc
 
 function drawKnife(ctx, x, y, angle, speed) {
   ctx.save();
@@ -534,11 +534,11 @@ function drawKnife(ctx, x, y, angle, speed) {
   ctx.rotate(angle);
 
   const bladeLen = KNIFE_BLADE_LEN;
-  const bladeW = 16;
-  const guardW = 48;
-  const guardH = 10;
-  const gripLen = 60;
-  const gripW = 13;
+  const bladeW = 22;
+  const guardW = 58;
+  const guardH = 12;
+  const gripLen = 75;
+  const gripW = 16;
 
   // ── Blade glow (stronger when moving fast) ──
   const glowIntensity = Math.min(speed / 18, 1);
