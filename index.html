@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>🍉 Air Slasher — Fingertip Katana v2.3</title>
+  <title>🍉 Air Slasher — Fingertip Katana v2.4</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -239,7 +239,7 @@
   </div>
 
   <div id="combo-display"></div>
-  <div id="version-badge">🗡️ v2.3 · Fingertip Katana</div>
+  <div id="version-badge">🗡️ v2.4 · Fingertip Katana</div>
 
   <!-- Start Overlay -->
   <div id="start-overlay" class="overlay">
@@ -734,15 +734,6 @@ function onHandResults(results) {
   const handDist = Math.hypot(indexTip.x - wristPt.x, indexTip.y - wristPt.y);
   playerHand.bladeLen = Math.max(75, Math.min(fingerDist * 1.35, 140));
   playerHand.gripLen = Math.max(45, Math.min(handDist * 0.35, 75));
-
-  if (playerHand.x < 0) {
-    playerHand.x = indexTip.x;
-    playerHand.y = indexTip.y;
-    playerHand.lastX = indexTip.x;
-    playerHand.lastY = indexTip.y;
-    playerHand.angle = playerHand.targetAngle;
-  }
-}
 
   if (playerHand.x < 0) {
     playerHand.x = indexTip.x;
