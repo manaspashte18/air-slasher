@@ -3,9 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🍉 Air Slasher — Fruit Ninja with Webcam</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>🍉 Air Slasher — Fingertip Katana v2.3</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    #version-badge {
+      position: fixed;
+      bottom: 8px;
+      right: 12px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.45);
+      font-family: monospace;
+      letter-spacing: 0.5px;
+      pointer-events: none;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
 
     body {
       background: #0a0a0f;
@@ -221,6 +239,7 @@
   </div>
 
   <div id="combo-display"></div>
+  <div id="version-badge">🗡️ v2.3 · Fingertip Katana</div>
 
   <!-- Start Overlay -->
   <div id="start-overlay" class="overlay">
@@ -392,21 +411,23 @@ function playComboSound(count) {
   } catch (e) {}
 }
 
-// ── Smooth Single-Hand & Knife Tracking System ──
+// ── Smooth Fingertip & Knife Tracking System ──
 let playerHand = {
   active: false,
   targetX: -1,
   targetY: -1,
-  targetAngle: -Math.PI / 2,
+  targetAngle: 0,
   x: -1,
   y: -1,
   lastX: -1,
   lastY: -1,
-  angle: -Math.PI / 2,
-  tipX: -1,
-  tipY: -1,
-  lastTipX: -1,
-  lastTipY: -1,
+  baseX: -1,
+  baseY: -1,
+  lastBaseX: -1,
+  lastBaseY: -1,
+  angle: 0,
+  bladeLen: 110,
+  gripLen: 50,
   trail: [],
   lastSeenTime: 0
 };
@@ -524,77 +545,67 @@ function lerpAngle(a, b, t) {
 }
 
 // ════════════════════════════════════════════════
-//  KNIFE DRAWING (Katana blade extending outward from index fingertip)
+//  KNIFE DRAWING (Katana Tip Aligned Directly at Index Fingertip)
 // ════════════════════════════════════════════════
-const KNIFE_BLADE_LEN = 250;  // Blade extends 250px outward beyond the index fingertip into the air
-
-function drawKnife(ctx, x, y, angle, speed) {
+function drawKnife(ctx, tipX, tipY, angle, speed, bLen = 110, gLen = 50) {
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(tipX, tipY);
   ctx.rotate(angle);
 
-  const bladeLen = KNIFE_BLADE_LEN;
-  const bladeW = 18;
-  const guardW = 46;
-  const guardH = 10;
-  const gripLen = 52;
-  const gripW = 13;
+  const bladeLen = bLen;
+  const gripLen = gLen;
+  const bladeW = Math.max(13, bladeLen * 0.14);
+  const guardW = Math.max(34, bladeW * 2.5);
+  const guardH = 8;
+  const gripW = Math.max(10, bladeW * 0.72);
 
-  // ── Blade glow (stronger when moving fast) ──
-  const glowIntensity = Math.min(speed / 18, 1);
+  // ── Blade glow (flares during fast slashes) ──
+  const glowIntensity = Math.min(speed / 16, 1);
   if (glowIntensity > 0.05) {
-    ctx.shadowColor = `rgba(200, 230, 255, ${0.4 + glowIntensity * 0.6})`;
-    ctx.shadowBlur = 12 + glowIntensity * 30;
+    ctx.shadowColor = `rgba(255, 215, 0, ${0.45 + glowIntensity * 0.55})`;
+    ctx.shadowBlur = 10 + glowIntensity * 24;
   }
 
-  // ── Steel blade (katana shape — curves outward from fingertip into the air) ──
-  const bladeGrad = ctx.createLinearGradient(-bladeW, 0, bladeW, 0);
-  bladeGrad.addColorStop(0, '#6b7d8e');
-  bladeGrad.addColorStop(0.25, '#b0c4d8');
-  bladeGrad.addColorStop(0.45, '#e8eef4');
-  bladeGrad.addColorStop(0.55, '#f8fbff');
-  bladeGrad.addColorStop(0.75, '#b0c4d8');
-  bladeGrad.addColorStop(1, '#6b7d8e');
+  // ── Steel blade (sharp tip at (0, 0), runs down along finger to guard) ──
+  const bladeGrad = ctx.createLinearGradient(-bladeW / 2, 0, bladeW / 2, 0);
+  bladeGrad.addColorStop(0, '#64748b');
+  bladeGrad.addColorStop(0.25, '#cbd5e1');
+  bladeGrad.addColorStop(0.5, '#ffffff');
+  bladeGrad.addColorStop(0.75, '#cbd5e1');
+  bladeGrad.addColorStop(1, '#64748b');
   ctx.fillStyle = bladeGrad;
+
   ctx.beginPath();
-  ctx.moveTo(0, -bladeLen);                     // sharp tip extending 250px into air
-  ctx.quadraticCurveTo(-bladeW * 0.6, -bladeLen * 0.7, -bladeW, -guardH);  // left curved edge
-  ctx.lineTo(bladeW, -guardH);                  // right straight edge at guard
-  ctx.quadraticCurveTo(bladeW * 0.8, -bladeLen * 0.65, 0, -bladeLen);      // right curved edge back to tip
+  ctx.moveTo(0, 0); // Sharp needle tip locked at index fingertip!
+  ctx.quadraticCurveTo(-bladeW * 0.65, bladeLen * 0.45, -bladeW * 0.5, bladeLen);
+  ctx.lineTo(bladeW * 0.5, bladeLen);
+  ctx.quadraticCurveTo(bladeW * 0.65, bladeLen * 0.45, 0, 0);
   ctx.closePath();
   ctx.fill();
 
-  // ── Blade edge highlight (hamon line — polished edge pattern) ──
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-  ctx.lineWidth = 1.5;
+  // ── Blade edge highlight (hamon wave line) ──
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 1.1;
   ctx.beginPath();
-  ctx.moveTo(0, -bladeLen + 8);
-  for (let by = -bladeLen + 20; by < -guardH - 10; by += 18) {
-    const wave = Math.sin(by * 0.04) * 2;
-    ctx.lineTo(wave - bladeW * 0.15, by);
+  ctx.moveTo(0, 6);
+  for (let by = 14; by < bladeLen - 6; by += 12) {
+    const wave = Math.sin(by * 0.12) * 1.6;
+    ctx.lineTo(-bladeW * 0.22 + wave, by);
   }
   ctx.stroke();
 
   // ── Central ridge line (shinogi) ──
-  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
   ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.moveTo(0, -bladeLen + 10);
-  ctx.lineTo(0, -guardH - 5);
+  ctx.moveTo(0, 4);
+  ctx.lineTo(0, bladeLen - 4);
   ctx.stroke();
 
-  // ── Glint on blade tip ──
+  // ── Golden tsuba (guard) at the knuckle ──
   ctx.shadowBlur = 0;
-  const glintGrad = ctx.createRadialGradient(0, -bladeLen + 5, 0, 0, -bladeLen + 5, 14);
-  glintGrad.addColorStop(0, 'rgba(255,255,255,0.95)');
-  glintGrad.addColorStop(0.5, 'rgba(200,220,255,0.4)');
-  glintGrad.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = glintGrad;
-  ctx.fillRect(-14, -bladeLen - 2, 28, 22);
-
-  // ── Golden tsuba (guard) — sits right at the index fingertip ──
-  ctx.shadowBlur = 0;
-  const tsubaGrad = ctx.createLinearGradient(-guardW / 2, -guardH, guardW / 2, -guardH);
+  const tsubaY = bladeLen + 3;
+  const tsubaGrad = ctx.createLinearGradient(-guardW / 2, tsubaY, guardW / 2, tsubaY);
   tsubaGrad.addColorStop(0, '#8B6914');
   tsubaGrad.addColorStop(0.3, '#ffd700');
   tsubaGrad.addColorStop(0.5, '#fff5c0');
@@ -602,78 +613,77 @@ function drawKnife(ctx, x, y, angle, speed) {
   tsubaGrad.addColorStop(1, '#8B6914');
   ctx.fillStyle = tsubaGrad;
   ctx.beginPath();
-  ctx.ellipse(0, -guardH + 2, guardW / 2, guardH / 2 + 2, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, tsubaY, guardW / 2, guardH / 2, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#6B4F0A';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#5a3e05';
+  ctx.lineWidth = 1.2;
   ctx.stroke();
 
-  // Tsuba decorative inner ring
-  ctx.strokeStyle = 'rgba(255,215,0,0.4)';
+  // Tsuba inner decorative ellipse
+  ctx.strokeStyle = 'rgba(255,215,0,0.5)';
   ctx.lineWidth = 0.8;
   ctx.beginPath();
-  ctx.ellipse(0, -guardH + 2, guardW / 2 - 5, guardH / 2 - 1, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, tsubaY, guardW / 2 - 4, guardH / 2 - 1.5, 0, 0, Math.PI * 2);
   ctx.stroke();
 
-  // ── Dark wrapped grip (tsuka) — extends backwards along index finger ──
-  const gripGrad = ctx.createLinearGradient(-gripW, 0, gripW, 0);
+  // ── Dark wrapped grip (tsuka) resting in palm ──
+  const gripTop = tsubaY + 3;
+  const gripGrad = ctx.createLinearGradient(-gripW / 2, 0, gripW / 2, 0);
   gripGrad.addColorStop(0, '#0d0d1a');
-  gripGrad.addColorStop(0.2, '#2a2a44');
-  gripGrad.addColorStop(0.5, '#3d3d5c');
-  gripGrad.addColorStop(0.8, '#2a2a44');
+  gripGrad.addColorStop(0.3, '#2a2a44');
+  gripGrad.addColorStop(0.7, '#2a2a44');
   gripGrad.addColorStop(1, '#0d0d1a');
   ctx.fillStyle = gripGrad;
+  ctx.fillRect(-gripW / 2, gripTop, gripW, gripLen);
 
-  // Rounded rect grip
-  const gripTop = -guardH + guardH / 2 + 3;
-  ctx.beginPath();
-  ctx.moveTo(-gripW / 2 + 3, gripTop);
-  ctx.lineTo(gripW / 2 - 3, gripTop);
-  ctx.quadraticCurveTo(gripW / 2, gripTop, gripW / 2, gripTop + 3);
-  ctx.lineTo(gripW / 2, gripTop + gripLen - 3);
-  ctx.quadraticCurveTo(gripW / 2, gripTop + gripLen, gripW / 2 - 3, gripTop + gripLen);
-  ctx.lineTo(-gripW / 2 + 3, gripTop + gripLen);
-  ctx.quadraticCurveTo(-gripW / 2, gripTop + gripLen, -gripW / 2, gripTop + gripLen - 3);
-  ctx.lineTo(-gripW / 2, gripTop + 3);
-  ctx.quadraticCurveTo(-gripW / 2, gripTop, -gripW / 2 + 3, gripTop);
-  ctx.closePath();
-  ctx.fill();
-
-  // Diamond wrap pattern on grip
-  ctx.strokeStyle = 'rgba(255,215,0,0.3)';
+  // Golden diamond cord wrap
+  ctx.strokeStyle = 'rgba(255,215,0,0.45)';
   ctx.lineWidth = 1.2;
-  for (let gy = gripTop + 4; gy < gripTop + gripLen - 6; gy += 10) {
+  for (let gy = gripTop + 4; gy < gripTop + gripLen - 5; gy += 9) {
     ctx.beginPath();
     ctx.moveTo(-gripW / 2 + 1, gy);
-    ctx.lineTo(0, gy + 5);
+    ctx.lineTo(0, gy + 4.5);
     ctx.lineTo(gripW / 2 - 1, gy);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(-gripW / 2 + 1, gy + 10);
-    ctx.lineTo(0, gy + 5);
-    ctx.lineTo(gripW / 2 - 1, gy + 10);
+    ctx.moveTo(-gripW / 2 + 1, gy + 9);
+    ctx.lineTo(0, gy + 4.5);
+    ctx.lineTo(gripW / 2 - 1, gy + 9);
     ctx.stroke();
   }
 
-  // ── Gold pommel (kashira) ──
+  // ── Golden pommel (kashira) near wrist ──
   const pommelY = gripTop + gripLen + 2;
-  const pommelGrad = ctx.createRadialGradient(0, pommelY, 0, 0, pommelY, gripW / 2 + 3);
-  pommelGrad.addColorStop(0, '#fff5c0');
-  pommelGrad.addColorStop(0.5, '#ffd700');
-  pommelGrad.addColorStop(1, '#8B6914');
-  ctx.fillStyle = pommelGrad;
+  ctx.fillStyle = '#daa520';
   ctx.beginPath();
-  ctx.ellipse(0, pommelY, gripW / 2 + 3, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, pommelY, gripW / 2 + 2, 4, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = '#6B4F0A';
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 0.8;
   ctx.stroke();
 
-  // ── Subtle golden nexus at fingertip ──
+  // ── Knife Tip Glint & Sparkle at (0, 0) — LOCKED TO FINGERTIP ──
+  const glintGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 10);
+  glintGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  glintGrad.addColorStop(0.35, 'rgba(255, 215, 0, 0.65)');
+  glintGrad.addColorStop(1, 'rgba(255, 215, 0, 0)');
+  ctx.fillStyle = glintGrad;
+  ctx.fillRect(-10, -10, 20, 20);
+
+  ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.arc(0, 0, 6, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255, 215, 0, 0.4)';
+  ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
   ctx.fill();
+
+  // Dynamic 4-point star flare during swings
+  if (speed > 3) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-8, 0); ctx.lineTo(8, 0);
+    ctx.moveTo(0, -8); ctx.lineTo(0, 8);
+    ctx.stroke();
+  }
 
   ctx.restore();
 }
@@ -694,6 +704,7 @@ function onHandResults(results) {
   // Landmark 6: Index PIP joint, Landmark 5: Index knuckle, Landmark 0: Wrist
   const pipPt = mapLandmarkToCanvas(lm[6]);
   const knucklePt = mapLandmarkToCanvas(lm[5]);
+  const wristPt = mapLandmarkToCanvas(lm[0]);
 
   // Index finger pointing vector (from PIP/knuckle to fingertip)
   let dxH = indexTip.x - pipPt.x;
@@ -703,20 +714,35 @@ function onHandResults(results) {
     dyH = indexTip.y - knucklePt.y;
   }
   if (Math.hypot(dxH, dyH) < 15) {
-    const wristPt = mapLandmarkToCanvas(lm[0]);
     dxH = knucklePt.x - wristPt.x;
     dyH = knucklePt.y - wristPt.y;
   }
 
-  // Knife blade tip is at local (0, -bladeLen).
-  // To rotate local (0, -1) to point in screen direction (dxH, dyH):
-  // angle = Math.atan2(dxH, -dyH)
+  // Knife tip is at local (0, 0), blade extends along positive Y (towards knuckle).
+  // Vector pointing along blade towards knuckle is (-dxH, -dyH).
+  // Angle for rotation so blade points in finger direction:
   playerHand.targetAngle = Math.atan2(dxH, -dyH);
 
+  // Directly track the index fingertip
   playerHand.targetX = indexTip.x;
   playerHand.targetY = indexTip.y;
   playerHand.active = true;
   playerHand.lastSeenTime = performance.now();
+
+  // Calibrate blade length to fit from index fingertip down to knuckle
+  const fingerDist = Math.hypot(indexTip.x - knucklePt.x, indexTip.y - knucklePt.y);
+  const handDist = Math.hypot(indexTip.x - wristPt.x, indexTip.y - wristPt.y);
+  playerHand.bladeLen = Math.max(75, Math.min(fingerDist * 1.35, 140));
+  playerHand.gripLen = Math.max(45, Math.min(handDist * 0.35, 75));
+
+  if (playerHand.x < 0) {
+    playerHand.x = indexTip.x;
+    playerHand.y = indexTip.y;
+    playerHand.lastX = indexTip.x;
+    playerHand.lastY = indexTip.y;
+    playerHand.angle = playerHand.targetAngle;
+  }
+}
 
   if (playerHand.x < 0) {
     playerHand.x = indexTip.x;
@@ -828,23 +854,21 @@ function distToSegment(px, py, x1, y1, x2, y2) {
 // ════════════════════════════════════════════════
 function checkSlices() {
   if (!playerHand.active) return;
-  const fingerSpeed = Math.hypot(playerHand.x - playerHand.lastX, playerHand.y - playerHand.lastY);
-  const tipSpeed = Math.hypot(playerHand.tipX - playerHand.lastTipX, playerHand.tipY - playerHand.lastTipY);
-  const speed = Math.max(fingerSpeed, tipSpeed);
-  if (speed < 2.5) return; // blade or finger must be moving
+  const speed = Math.hypot(playerHand.x - playerHand.lastX, playerHand.y - playerHand.lastY);
+  if (speed < 2.5) return; // finger must be moving
 
   for (let i = fruits.length - 1; i >= 0; i--) {
     const fruit = fruits[i];
     if (fruit.sliced) continue;
 
     // Check collision against:
-    // 1. Knife tip motion trajectory (slashing arc)
-    // 2. Fingertip motion trajectory
-    // 3. Current blade segment from fingertip to knife tip
-    const dTip = distToSegment(fruit.x, fruit.y, playerHand.lastTipX, playerHand.lastTipY, playerHand.tipX, playerHand.tipY);
-    const dFinger = distToSegment(fruit.x, fruit.y, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
-    const dBlade = distToSegment(fruit.x, fruit.y, playerHand.x, playerHand.y, playerHand.tipX, playerHand.tipY);
-    const dist = Math.min(dTip, dFinger, dBlade);
+    // 1. Knife tip / Fingertip motion trajectory
+    // 2. Current blade segment from fingertip to guard
+    // 3. Guard motion trajectory
+    const dTip = distToSegment(fruit.x, fruit.y, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
+    const dBlade = distToSegment(fruit.x, fruit.y, playerHand.x, playerHand.y, playerHand.baseX, playerHand.baseY);
+    const dBase = distToSegment(fruit.x, fruit.y, playerHand.lastBaseX, playerHand.lastBaseY, playerHand.baseX, playerHand.baseY);
+    const dist = Math.min(dTip, dBlade, dBase);
 
     if (dist < CONFIG.sliceRadius + fruit.size * 0.5) {
         fruit.sliced = true;
@@ -996,35 +1020,38 @@ function gameLoop(timestamp) {
     } else {
       playerHand.lastX = playerHand.x;
       playerHand.lastY = playerHand.y;
-      playerHand.lastTipX = playerHand.tipX;
-      playerHand.lastTipY = playerHand.tipY;
+      playerHand.lastBaseX = playerHand.baseX;
+      playerHand.lastBaseY = playerHand.baseY;
 
       const dx = playerHand.targetX - playerHand.x;
       const dy = playerHand.targetY - playerHand.y;
       const dist = Math.hypot(dx, dy);
 
-      // Ultra-responsive follow: Fast swipes lock tightly (0.90), smooth motions glide (0.52)
-      const followRate = dist > 25 ? 0.90 : (dist > 8 ? 0.72 : 0.52);
+      // Ultra-responsive follow: Fast swipes lock tightly (0.92), smooth motions glide (0.55)
+      const followRate = dist > 25 ? 0.92 : (dist > 8 ? 0.75 : 0.55);
       playerHand.x += dx * followRate;
       playerHand.y += dy * followRate;
 
       // Smooth angle interpolation
-      playerHand.angle = lerpAngle(playerHand.angle, playerHand.targetAngle, 0.40);
+      playerHand.angle = lerpAngle(playerHand.angle, playerHand.targetAngle, 0.42);
 
-      // Knife tip position (blade extending from index fingertip in knife's local up direction)
-      // In drawKnife, tip is at local (0, -KNIFE_BLADE_LEN). After ctx.rotate(angle):
-      // worldTip = indexFingertip + (KNIFE_BLADE_LEN * sin(angle), -KNIFE_BLADE_LEN * cos(angle))
-      playerHand.tipX = playerHand.x + KNIFE_BLADE_LEN * Math.sin(playerHand.angle);
-      playerHand.tipY = playerHand.y - KNIFE_BLADE_LEN * Math.cos(playerHand.angle);
+      // Knife tip is locked directly to the index fingertip!
+      playerHand.tipX = playerHand.x;
+      playerHand.tipY = playerHand.y;
 
-      // First frame — initialize tip history so collision doesn't glitch
-      if (playerHand.lastTipX < 0) {
-        playerHand.lastTipX = playerHand.tipX;
-        playerHand.lastTipY = playerHand.tipY;
+      // Base of blade (guard position) extends down towards knuckle
+      const bLen = playerHand.bladeLen || 110;
+      playerHand.baseX = playerHand.x - Math.sin(playerHand.angle) * bLen;
+      playerHand.baseY = playerHand.y + Math.cos(playerHand.angle) * bLen;
+
+      if (playerHand.lastBaseX === undefined || playerHand.lastBaseX < 0) {
+        playerHand.lastBaseX = playerHand.baseX;
+        playerHand.lastBaseY = playerHand.baseY;
       }
 
       if (gameState === 'playing' && dist > 1.2) {
-        playerHand.trail.push({ x: playerHand.tipX, y: playerHand.tipY, age: 1.0 });
+        // Golden slash trail emits directly from the knife tip / index fingertip!
+        playerHand.trail.push({ x: playerHand.x, y: playerHand.y, age: 1.0 });
         if (playerHand.trail.length > 22) playerHand.trail.shift();
       }
     }
@@ -1204,10 +1231,10 @@ function gameLoop(timestamp) {
       ctx.restore();
     }
 
-    // Draw animated knife extending from index fingertip
+    // Draw animated katana with tip aligned at the index fingertip
     if (playerHand.active) {
-      const knifeSpeed = Math.hypot(playerHand.tipX - playerHand.lastTipX, playerHand.tipY - playerHand.lastTipY);
-      drawKnife(ctx, playerHand.x, playerHand.y, playerHand.angle, knifeSpeed);
+      const knifeSpeed = Math.hypot(playerHand.x - playerHand.lastX, playerHand.y - playerHand.lastY);
+      drawKnife(ctx, playerHand.x, playerHand.y, playerHand.angle, knifeSpeed, playerHand.bladeLen, playerHand.gripLen);
     }
   }
 
@@ -1221,12 +1248,10 @@ function gameLoop(timestamp) {
 
       let isHovering = false;
       if (playerHand.active) {
-        // Can hover either with fingertip or knife tip over the restart button
-        const distFinger = Math.hypot(playerHand.x - bx, playerHand.y - by);
-        const distTip = Math.hypot(playerHand.tipX - bx, playerHand.tipY - by);
-        const distToCenter = Math.min(distFinger, distTip);
+        // Can hover with fingertip / knife tip over the restart button
+        const distToCenter = Math.hypot(playerHand.x - bx, playerHand.y - by);
 
-        // Direct hover check: fills up smoothly when knife/finger is held over button
+        // Direct hover check: fills up smoothly when knife tip is held over button
         if (distToCenter < ringRadius + 18) {
           isHovering = true;
           holdToRestartTimer += dt / 1100; // takes ~1.1s of holding to restart
@@ -1237,15 +1262,12 @@ function gameLoop(timestamp) {
             // Do NOT return here — requestAnimationFrame must be called at bottom of gameLoop
           }
         } else {
-          // Swipe to restart check: instant trigger if player slashes knife or finger through button
-          const swipeTip = distToSegment(bx, by, playerHand.lastTipX, playerHand.lastTipY, playerHand.tipX, playerHand.tipY);
-          const swipeFinger = distToSegment(bx, by, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
-          const swipeDist = Math.min(swipeTip, swipeFinger);
-          const swipeSpeed = Math.max(
-            Math.hypot(playerHand.x - playerHand.lastX, playerHand.y - playerHand.lastY),
-            Math.hypot(playerHand.tipX - playerHand.lastTipX, playerHand.tipY - playerHand.lastTipY)
-          );
-          if (swipeSpeed > 8 && swipeDist < ringRadius + 18) {
+          // Swipe to restart check: instant trigger if player slashes knife tip through button
+          const swipeTip = distToSegment(bx, by, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
+          const swipeBlade = distToSegment(bx, by, playerHand.x, playerHand.y, playerHand.baseX, playerHand.baseY);
+          const swipeDist = Math.min(swipeTip, swipeBlade);
+          const swipeSpeed = Math.hypot(playerHand.x - playerHand.lastX, playerHand.y - playerHand.lastY);
+          if (swipeSpeed > 7 && swipeDist < ringRadius + 18) {
             holdToRestartTimer = 0;
             playSliceSound();
             playComboSound(4);
@@ -1314,12 +1336,8 @@ function startGame() {
   slicedHalves = [];
   particles = [];
   playerHand.trail = [];
-  playerHand.angle = -Math.PI / 2;
-  playerHand.targetAngle = -Math.PI / 2;
-  playerHand.tipX = playerHand.x;
-  playerHand.tipY = playerHand.y;
-  playerHand.lastTipX = playerHand.x;
-  playerHand.lastTipY = playerHand.y;
+  playerHand.angle = 0;
+  playerHand.targetAngle = 0;
   comboCount = 0;
   totalSliced = 0;
   totalMissed = 0;
