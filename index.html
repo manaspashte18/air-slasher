@@ -392,15 +392,21 @@ function playComboSound(count) {
   } catch (e) {}
 }
 
-// ── Smooth Single-Hand Tracking System ──
+// ── Smooth Single-Hand & Knife Tracking System ──
 let playerHand = {
   active: false,
   targetX: -1,
   targetY: -1,
+  targetAngle: -Math.PI / 2,
   x: -1,
   y: -1,
   lastX: -1,
   lastY: -1,
+  angle: -Math.PI / 2,
+  tipX: -1,
+  tipY: -1,
+  lastTipX: -1,
+  lastTipY: -1,
   trail: [],
   lastSeenTime: 0
 };
@@ -509,14 +515,130 @@ function mapLandmarkToCanvas(tip) {
   };
 }
 
+// Smooth angle interpolation that handles wrapping around ±π
+function lerpAngle(a, b, t) {
+  let diff = b - a;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  return a + diff * t;
+}
+
+// ════════════════════════════════════════════════
+//  KNIFE DRAWING (Double-beveled katana dagger anchored at palm center)
+// ════════════════════════════════════════════════
+function drawKnife(ctx, x, y, angle, speed) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+
+  const bladeLen = 80;
+  const bladeW = 7;
+  const guardW = 20;
+  const guardH = 5;
+  const gripLen = 30;
+  const gripW = 6;
+
+  // ── Blade glow (stronger when moving fast) ──
+  const glowIntensity = Math.min(speed / 20, 1);
+  if (glowIntensity > 0.1) {
+    ctx.shadowColor = `rgba(255, 215, 0, ${0.3 + glowIntensity * 0.5})`;
+    ctx.shadowBlur = 8 + glowIntensity * 18;
+  }
+
+  // ── Steel blade ──
+  const bladeGrad = ctx.createLinearGradient(-bladeW, 0, bladeW, 0);
+  bladeGrad.addColorStop(0, '#8a9bb0');
+  bladeGrad.addColorStop(0.35, '#d4dce8');
+  bladeGrad.addColorStop(0.5, '#f0f4f8');
+  bladeGrad.addColorStop(0.65, '#d4dce8');
+  bladeGrad.addColorStop(1, '#8a9bb0');
+  ctx.fillStyle = bladeGrad;
+  ctx.beginPath();
+  ctx.moveTo(0, -bladeLen);          // tip
+  ctx.lineTo(-bladeW, -10);          // left edge at guard
+  ctx.lineTo(bladeW, -10);           // right edge at guard
+  ctx.closePath();
+  ctx.fill();
+
+  // ── Central ridge line ──
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, -bladeLen + 4);
+  ctx.lineTo(0, -12);
+  ctx.stroke();
+
+  // ── Glint on blade tip ──
+  ctx.shadowBlur = 0;
+  const glintGrad = ctx.createRadialGradient(0, -bladeLen + 3, 0, 0, -bladeLen + 3, 6);
+  glintGrad.addColorStop(0, 'rgba(255,255,255,0.9)');
+  glintGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = glintGrad;
+  ctx.fillRect(-6, -bladeLen, 12, 12);
+
+  // ── Golden tsuba (guard) ──
+  const tsubaGrad = ctx.createLinearGradient(-guardW / 2, -10, guardW / 2, -10);
+  tsubaGrad.addColorStop(0, '#b8860b');
+  tsubaGrad.addColorStop(0.5, '#ffd700');
+  tsubaGrad.addColorStop(1, '#b8860b');
+  ctx.fillStyle = tsubaGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, -8, guardW / 2, guardH / 2 + 1, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#8B6914';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+
+  // ── Dark wrapped grip ──
+  const gripGrad = ctx.createLinearGradient(-gripW, 0, gripW, 0);
+  gripGrad.addColorStop(0, '#1a1a2e');
+  gripGrad.addColorStop(0.3, '#3d3d5c');
+  gripGrad.addColorStop(0.7, '#3d3d5c');
+  gripGrad.addColorStop(1, '#1a1a2e');
+  ctx.fillStyle = gripGrad;
+  ctx.fillRect(-gripW / 2, -7, gripW, gripLen);
+
+  // Wrap lines on grip
+  ctx.strokeStyle = 'rgba(255,215,0,0.25)';
+  ctx.lineWidth = 1;
+  for (let gy = -4; gy < gripLen - 8; gy += 6) {
+    ctx.beginPath();
+    ctx.moveTo(-gripW / 2, gy);
+    ctx.lineTo(gripW / 2, gy + 3);
+    ctx.stroke();
+  }
+
+  // ── Gold pommel ──
+  ctx.fillStyle = '#daa520';
+  ctx.beginPath();
+  ctx.arc(0, gripLen - 5, gripW / 2 + 1, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ════════════════════════════════════════════════
+//  HAND RESULTS — Palm Center + Hand Angle
+// ════════════════════════════════════════════════
 function onHandResults(results) {
   const detected = results.multiHandLandmarks || [];
   if (detected.length === 0) {
     return;
   }
 
-  const tip = detected[0][8]; // Index fingertip = landmark 8
-  const mapped = mapLandmarkToCanvas(tip);
+  const lm = detected[0];
+
+  // Palm center = weighted average of wrist (0), index knuckle (5), middle knuckle (9), pinky knuckle (17)
+  const palmRaw = {
+    x: lm[0].x * 0.35 + lm[5].x * 0.2 + lm[9].x * 0.25 + lm[17].x * 0.2,
+    y: lm[0].y * 0.35 + lm[5].y * 0.2 + lm[9].y * 0.25 + lm[17].y * 0.2
+  };
+  const mapped = mapLandmarkToCanvas(palmRaw);
+
+  // Hand angle: wrist → middle finger knuckle, rotated so blade points forward (along fingers)
+  const wristPt = mapLandmarkToCanvas(lm[0]);
+  const knucklePt = mapLandmarkToCanvas(lm[9]);
+  playerHand.targetAngle = Math.atan2(knucklePt.y - wristPt.y, knucklePt.x - wristPt.x) - Math.PI / 2;
 
   playerHand.targetX = mapped.x;
   playerHand.targetY = mapped.y;
@@ -528,6 +650,7 @@ function onHandResults(results) {
     playerHand.y = mapped.y;
     playerHand.lastX = mapped.x;
     playerHand.lastY = mapped.y;
+    playerHand.angle = playerHand.targetAngle;
   }
 }
 
@@ -632,15 +755,16 @@ function distToSegment(px, py, x1, y1, x2, y2) {
 // ════════════════════════════════════════════════
 function checkSlices() {
   if (!playerHand.active) return;
-  const speed = Math.hypot(playerHand.x - playerHand.lastX, playerHand.y - playerHand.lastY);
-  if (speed < 2.5) return; // finger must be moving
+  // Use knife tip movement for speed and collision
+  const speed = Math.hypot(playerHand.tipX - playerHand.lastTipX, playerHand.tipY - playerHand.lastTipY);
+  if (speed < 2.5) return; // blade must be moving
 
   for (let i = fruits.length - 1; i >= 0; i--) {
     const fruit = fruits[i];
     if (fruit.sliced) continue;
 
-    // LINE INTERSECTION: Checks the entire path carved by the smooth 60 FPS interpolated blade!
-    const dist = distToSegment(fruit.x, fruit.y, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
+    // LINE INTERSECTION: Checks the entire path carved by the knife tip!
+    const dist = distToSegment(fruit.x, fruit.y, playerHand.lastTipX, playerHand.lastTipY, playerHand.tipX, playerHand.tipY);
     if (dist < CONFIG.sliceRadius + fruit.size * 0.5) {
         fruit.sliced = true;
 
@@ -791,6 +915,8 @@ function gameLoop(timestamp) {
     } else {
       playerHand.lastX = playerHand.x;
       playerHand.lastY = playerHand.y;
+      playerHand.lastTipX = playerHand.tipX;
+      playerHand.lastTipY = playerHand.tipY;
 
       const dx = playerHand.targetX - playerHand.x;
       const dy = playerHand.targetY - playerHand.y;
@@ -801,8 +927,24 @@ function gameLoop(timestamp) {
       playerHand.x += dx * followRate;
       playerHand.y += dy * followRate;
 
+      // Smooth angle interpolation
+      playerHand.angle = lerpAngle(playerHand.angle, playerHand.targetAngle, 0.32);
+
+      // Knife tip position (80px blade extending from palm center in knife's local up direction)
+      // In drawKnife, tip is at local (0, -BLADE_LEN). After ctx.rotate(angle):
+      // worldTip = palm + (BLADE_LEN * sin(angle), -BLADE_LEN * cos(angle))
+      const BLADE_LEN = 80;
+      playerHand.tipX = playerHand.x + BLADE_LEN * Math.sin(playerHand.angle);
+      playerHand.tipY = playerHand.y - BLADE_LEN * Math.cos(playerHand.angle);
+
+      // First frame — initialize tip history so collision doesn't glitch
+      if (playerHand.lastTipX < 0) {
+        playerHand.lastTipX = playerHand.tipX;
+        playerHand.lastTipY = playerHand.tipY;
+      }
+
       if (gameState === 'playing' && dist > 1.2) {
-        playerHand.trail.push({ x: playerHand.x, y: playerHand.y, age: 1.0 });
+        playerHand.trail.push({ x: playerHand.tipX, y: playerHand.tipY, age: 1.0 });
         if (playerHand.trail.length > 22) playerHand.trail.shift();
       }
     }
@@ -982,22 +1124,10 @@ function gameLoop(timestamp) {
       ctx.restore();
     }
 
-    // Glowing fingertip cursor
+    // Draw animated knife at palm center
     if (playerHand.active) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(playerHand.x, playerHand.y, 14, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
-      ctx.shadowColor = '#fff';
-      ctx.shadowBlur = 12;
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(playerHand.x, playerHand.y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = '#ffdd57';
-      ctx.shadowBlur = 0;
-      ctx.fill();
-      ctx.restore();
+      const knifeSpeed = Math.hypot(playerHand.tipX - playerHand.lastTipX, playerHand.tipY - playerHand.lastTipY);
+      drawKnife(ctx, playerHand.x, playerHand.y, playerHand.angle, knifeSpeed);
     }
   }
 
@@ -1020,7 +1150,7 @@ function gameLoop(timestamp) {
             holdToRestartTimer = 0;
             playComboSound(5);
             startGame();
-            return;
+            // Do NOT return here — requestAnimationFrame must be called at bottom of gameLoop
           }
         } else {
           // Swipe to restart check: instant trigger if player slashes through button
@@ -1031,7 +1161,7 @@ function gameLoop(timestamp) {
             playSliceSound();
             playComboSound(4);
             startGame();
-            return;
+            // Do NOT return here — requestAnimationFrame must be called at bottom of gameLoop
           }
         }
       }
@@ -1095,6 +1225,12 @@ function startGame() {
   slicedHalves = [];
   particles = [];
   playerHand.trail = [];
+  playerHand.angle = -Math.PI / 2;
+  playerHand.targetAngle = -Math.PI / 2;
+  playerHand.tipX = playerHand.x;
+  playerHand.tipY = playerHand.y;
+  playerHand.lastTipX = playerHand.x;
+  playerHand.lastTipY = playerHand.y;
   comboCount = 0;
   totalSliced = 0;
   totalMissed = 0;
