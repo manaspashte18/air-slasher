@@ -46,6 +46,8 @@
       width: 100%; height: 100%;
       object-fit: cover;
       transform: scaleX(-1);
+      will-change: transform;
+      backface-visibility: hidden;
       z-index: 1;
     }
 
@@ -456,12 +458,25 @@ bestEl.textContent = bestScore;
 // ════════════════════════════════════════════════
 //  CANVAS SIZING
 // ════════════════════════════════════════════════
+const MAX_RENDER_PIXELS = 1600 * 900;
+const RENDER_SCALE = 0.85;
+
 function resizeCanvas() {
-  canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
+  const cssWidth = window.innerWidth;
+  const cssHeight = window.innerHeight;
+  const pixelBudgetScale = Math.min(1, Math.sqrt(MAX_RENDER_PIXELS / (cssWidth * cssHeight)));
+  const renderScale = Math.min((window.devicePixelRatio || 1) * RENDER_SCALE, pixelBudgetScale);
+
+  canvas.width = Math.max(1, Math.round(cssWidth * renderScale));
+  canvas.height = Math.max(1, Math.round(cssHeight * renderScale));
+  canvas.style.width = cssWidth + 'px';
+  canvas.style.height = cssHeight + 'px';
+  ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+  canvas._cssWidth = cssWidth;
+  canvas._cssHeight = cssHeight;
+  canvas._renderScale = renderScale;
 }
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
+
 
 // ════════════════════════════════════════════════
 //  MEDIAPIPE HANDS SETUP (16:9 Native Widescreen)
@@ -470,6 +485,12 @@ let handsReady = false;
 let isProcessingFrame = false;
 let handsInstance = null;
 let cameraInstance = null;
+let inferenceMs = 0;
+let inferenceSamples = 0;
+let inferenceTotalMs = 0;
+let lastInferenceAt = 0;
+let framePumpRunning = false;
+let lastVideoTime = -1;
 
 function setupHands() {
   if (handsInstance) return handsInstance;
@@ -478,43 +499,109 @@ function setupHands() {
     locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
   });
 
-  // Single-hand tracking: cuts model workload by ~50% for maximum 60fps tracking speed
+  // Lite model lowers hand-tracking cost while retaining fingertip landmarks.
   hands.setOptions({
     maxNumHands: 1,
     modelComplexity: 0,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5,
+    minDetectionConfidence: 0.55,
+    minTrackingConfidence: 0.55,
   });
 
-  hands.onResults(onHandResults);
-
-  // 1280x720 matches native 16:9 webcam sensors, completely preventing camera zoom-in / cropping!
-  const camera = new Camera(video, {
-    onFrame: async () => {
-      // FRAME-DROP GUARD: If the model is still processing the previous frame,
-      // drop this frame immediately instead of queuing it up!
-      if (isProcessingFrame) return;
-      isProcessingFrame = true;
-      try {
-        await hands.send({ image: video });
-      } catch (err) {
-        console.error('Hands send error:', err);
-      } finally {
-        isProcessingFrame = false;
-      }
-    },
-    width: 1280,
-    height: 720,
-  });
-
-  camera.start().then(() => {
-    handsReady = true;
-    loadingText.textContent = 'Camera ready!';
+  hands.onResults((results) => {
+    onHandResults(results);
+    if (lastInferenceAt) {
+      inferenceMs = performance.now() - lastInferenceAt;
+      inferenceTotalMs += inferenceMs;
+      inferenceSamples++;
+    }
   });
 
   handsInstance = hands;
-  cameraInstance = camera;
   return hands;
+}
+
+async function startCameraAndTracking() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Camera access requires HTTPS and a browser that supports getUserMedia.');
+  }
+
+  const hands = setupHands();
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      facingMode: { ideal: 'user' },
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 30, max: 30 }
+    }
+  });
+
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = stream;
+
+  try {
+    await video.play();
+    if (video.readyState < 2) {
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Camera opened but no video frame arrived.')), 10000);
+        video.addEventListener('loadeddata', () => { clearTimeout(timeout); resolve(); }, { once: true });
+        video.addEventListener('error', () => { clearTimeout(timeout); reject(new Error('Could not read camera video.')); }, { once: true });
+      });
+    }
+  } catch (error) {
+    stream.getTracks().forEach(track => track.stop());
+    video.srcObject = null;
+    throw error;
+  }
+
+  cameraInstance = { stream, hands };
+  handsReady = true;
+  loadingText.textContent = 'Camera ready!';
+  lastVideoTime = -1;
+  framePumpRunning = true;
+
+  // Run inference on camera frames, separately from the screen's animation loop.
+  const processFrame = async () => {
+    if (!framePumpRunning || !cameraInstance?.stream?.active) return;
+
+    if (video.readyState >= 2 && video.currentTime !== lastVideoTime && !isProcessingFrame) {
+      lastVideoTime = video.currentTime;
+      isProcessingFrame = true;
+      lastInferenceAt = performance.now();
+      try {
+        await hands.send({ image: video });
+      } catch (error) {
+        console.error('MediaPipe frame error:', error);
+      } finally {
+        isProcessingFrame = false;
+      }
+    }
+
+    if (!framePumpRunning) return;
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      video.requestVideoFrameCallback(processFrame);
+    } else {
+      requestAnimationFrame(processFrame);
+    }
+  };
+
+  if (typeof video.requestVideoFrameCallback === 'function') {
+    video.requestVideoFrameCallback(processFrame);
+  } else {
+    requestAnimationFrame(processFrame);
+  }
+}
+
+function stopCameraAndTracking() {
+  framePumpRunning = false;
+  handsReady = false;
+  isProcessingFrame = false;
+  if (cameraInstance?.stream) cameraInstance.stream.getTracks().forEach(track => track.stop());
+  cameraInstance = null;
+  video.pause();
+  video.srcObject = null;
+  playerHand.active = false;
 }
 
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -526,10 +613,10 @@ function mapLandmarkToCanvas(tip) {
   const mirroredX = 1 - tip.x;
   const rawY = tip.y;
 
-  const vw = video.videoWidth || 1280;
-  const vh = video.videoHeight || 720;
-  const cw = canvas.width;
-  const ch = canvas.height;
+  const vw = video.videoWidth || 640;
+  const vh = video.videoHeight || 480;
+  const cw = canvas._cssWidth || window.innerWidth;
+  const ch = canvas._cssHeight || window.innerHeight;
 
   const videoAspect = vw / vh;
   const canvasAspect = cw / ch;
@@ -1002,20 +1089,34 @@ function updateLives() {
 //  GAME LOOP
 // ════════════════════════════════════════════════
 let lastTime = 0;
+let fpsFrames = 0;
+let fpsWindowStart = 0;
+let displayedFps = 0;
+let perfLastUpdate = 0;
+let lastCanvasCheck = 0;
 
 function gameLoop(timestamp) {
-  const dt = Math.min(timestamp - lastTime, 50); // cap delta
+  const dt = lastTime ? Math.min(timestamp - lastTime, 50) : 16.667;
+  const frameScale = Math.min(dt / 16.667, 2.5);
   lastTime = timestamp;
 
-  // CRITICAL PERFORMANCE FIX:
-  // Only resize the canvas when window dimensions actually change!
-  // Calling resizeCanvas() 60 times/sec was destroying and re-allocating full-screen GPU textures every frame,
-  // causing severe memory thrashing and progressive FPS degradation over time.
-  if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+  // Avoid resetting the canvas backing store on every animation frame.
+  if (timestamp - lastCanvasCheck > 500) {
+    lastCanvasCheck = timestamp;
+    if (canvas._cssWidth !== window.innerWidth || canvas._cssHeight !== window.innerHeight) resizeCanvas();
   }
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  fpsFrames++;
+  if (!fpsWindowStart) fpsWindowStart = timestamp;
+  if (timestamp - fpsWindowStart >= 500) {
+    displayedFps = Math.round(fpsFrames * 1000 / (timestamp - fpsWindowStart));
+    fpsFrames = 0;
+    fpsWindowStart = timestamp;
+  }
+
+  const cssWidth = canvas._cssWidth || window.innerWidth;
+  const cssHeight = canvas._cssHeight || window.innerHeight;
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
 
   // ── 60 FPS Smooth Hand Interpolation ──
   if (playerHand.active) {
@@ -1031,13 +1132,11 @@ function gameLoop(timestamp) {
       const dy = playerHand.targetY - playerHand.y;
       const dist = Math.hypot(dx, dy);
 
-      // Ultra-responsive follow: Fast swipes lock tightly (0.92), smooth motions glide (0.55)
-      const followRate = dist > 25 ? 0.92 : (dist > 8 ? 0.75 : 0.55);
+      // Exponential smoothing is independent of the display refresh rate.
+      const followRate = 1 - Math.pow(0.0008, frameScale);
       playerHand.x += dx * followRate;
       playerHand.y += dy * followRate;
-
-      // Smooth angle interpolation
-      playerHand.angle = lerpAngle(playerHand.angle, playerHand.targetAngle, 0.42);
+      playerHand.angle = lerpAngle(playerHand.angle, playerHand.targetAngle, 1 - Math.pow(0.08, frameScale));
 
       // Knife tip is locked directly to the index fingertip!
       playerHand.tipX = playerHand.x;
@@ -1085,10 +1184,10 @@ function gameLoop(timestamp) {
     const f = fruits[i];
 
     if (!f.sliced) {
-      f.vy += f.gravity;
-      f.x += f.vx;
-      f.y += f.vy;
-      f.rotation += f.rotSpeed;
+      f.vy += f.gravity * frameScale;
+      f.x += f.vx * frameScale;
+      f.y += f.vy * frameScale;
+      f.rotation += f.rotSpeed * frameScale;
 
       // Missed — fell below screen or drifted far out of bounds
       if (f.y > canvas.height + f.size * 2 || f.x < -300 || f.x > canvas.width + 300) {
@@ -1124,11 +1223,11 @@ function gameLoop(timestamp) {
   // Update & draw tumbling sliced halves
   for (let i = slicedHalves.length - 1; i >= 0; i--) {
     const h = slicedHalves[i];
-    h.vy += h.gravity;
-    h.x += h.vx;
-    h.y += h.vy;
-    h.rotation += h.rotSpeed;
-    h.opacity -= 0.022;
+    h.vy += h.gravity * frameScale;
+    h.x += h.vx * frameScale;
+    h.y += h.vy * frameScale;
+    h.rotation += h.rotSpeed * frameScale;
+    h.opacity -= 0.022 * frameScale;
 
     if (h.opacity <= 0 || h.y > canvas.height + 150) {
       slicedHalves.splice(i, 1);
@@ -1156,10 +1255,10 @@ function gameLoop(timestamp) {
   // Update & draw particles
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vy += 0.08;
-    p.life -= p.decay;
+    p.x += p.vx * frameScale;
+    p.y += p.vy * frameScale;
+    p.vy += 0.08 * frameScale;
+    p.life -= p.decay * frameScale;
 
     if (p.life <= 0) {
       particles.splice(i, 1);
@@ -1318,9 +1417,16 @@ function gameLoop(timestamp) {
     ctx.save();
     ctx.globalAlpha = flashAlpha;
     ctx.fillStyle = flashColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, cssWidth, cssHeight);
     ctx.restore();
-    flashAlpha -= 0.02;
+    flashAlpha = Math.max(0, flashAlpha - 0.02 * frameScale);
+  }
+
+  if (perf.classList.contains('show') && timestamp - perfLastUpdate > 250) {
+    perfLastUpdate = timestamp;
+    const averageInference = inferenceSamples ? Math.round(inferenceTotalMs / inferenceSamples) : 0;
+    const inputFps = cameraInstance?.stream?.getVideoTracks?.()[0]?.getSettings?.().frameRate;
+    perf.textContent = `FPS: ${displayedFps} · Hand: ${averageInference}ms · Camera: ${inputFps ? Math.round(inputFps) + 'fps' : '—'} · Canvas: ${canvas.width}×${canvas.height}`;
   }
 
   requestAnimationFrame(gameLoop);
@@ -1386,29 +1492,19 @@ startBtn.addEventListener('click', async () => {
   loadingText.textContent = 'Starting camera & loading hand model...';
 
   try {
-    setupHands();
-
-    // Wait for the model to be ready (poll a bit)
-    let waited = 0;
-    while (!handsReady && waited < 15000) {
-      await new Promise(r => setTimeout(r, 200));
-      waited += 200;
-    }
-
-    if (!handsReady) {
-      loadingText.textContent = 'Camera access denied or model failed to load. Please allow camera access and refresh.';
-      startBtn.textContent = '▶ START GAME';
-      startBtn.disabled = false;
-      loadSpinner.style.display = 'none';
-      return;
-    }
-
+    await startCameraAndTracking();
     loadingText.textContent = '';
     loadSpinner.style.display = 'none';
+    startBtn.textContent = '▶ START GAME';
+    startBtn.disabled = false;
     startGame();
   } catch (err) {
-    console.error(err);
-    loadingText.textContent = `Error: ${err.message}. Please allow camera access.`;
+    console.error('Camera / hand tracking startup failed:', err);
+    let message = err.message || 'Unexpected camera error.';
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') message = 'Camera permission was denied. Allow camera access for this site.';
+    else if (err.name === 'NotFoundError') message = 'No camera was found. Connect a camera and try again.';
+    else if (err.name === 'NotReadableError') message = 'The camera is being used by another app. Close it and try again.';
+    loadingText.textContent = `Unable to start: ${message}`;
     startBtn.textContent = '▶ START GAME';
     startBtn.disabled = false;
     loadSpinner.style.display = 'none';
@@ -1420,7 +1516,15 @@ restartBtn.addEventListener('click', () => {
   startGame();
 });
 
-// Kick off render loop
+// Press F to show performance diagnostics, or open with ?perf.
+if (new URLSearchParams(window.location.search).has('perf')) perf.classList.add('show');
+window.addEventListener('keydown', (event) => {
+  if (event.key.toLowerCase() === 'f' && !event.repeat &&
+      !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) perf.classList.toggle('show');
+});
+window.addEventListener('resize', resizeCanvas, { passive: true });
+window.addEventListener('orientationchange', resizeCanvas, { passive: true });
+resizeCanvas();
 requestAnimationFrame(gameLoop);
 </script>
 </body>
