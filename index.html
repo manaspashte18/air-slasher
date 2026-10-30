@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>🍉 Air Slasher — Fingertip Katana v2.5</title>
+  <title>🍉 Air Slasher — Fingertip Katana v2.6</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -69,9 +69,10 @@
       pointer-events: none;
     }
 
+    /* NOTE: no backdrop-filter here. Blurring a live <video> behind the HUD forces the
+       GPU to re-blur that region on every camera frame, which costs real frame time. */
     .hud-box {
-      background: rgba(0,0,0,0.55);
-      backdrop-filter: blur(10px);
+      background: rgba(0,0,0,0.62);
       border: 1px solid rgba(255,255,255,0.1);
       border-radius: 14px;
       padding: 10px 22px;
@@ -94,8 +95,10 @@
     #lives-display span {
       font-size: 24px;
       margin-right: 2px;
-      filter: drop-shadow(0 0 4px crimson);
+      text-shadow: 0 0 6px crimson;
     }
+
+    #hud.hidden { display: none; }
 
     #combo-display {
       position: absolute;
@@ -110,6 +113,7 @@
       pointer-events: none;
       opacity: 0;
       transition: none;
+      will-change: transform, opacity;
     }
 
     /* ── Overlays ── */
@@ -121,8 +125,7 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      background: rgba(5, 5, 15, 0.88);
-      backdrop-filter: blur(18px);
+      background: rgba(5, 5, 15, 0.92);
       color: #fff;
       text-align: center;
       transition: opacity 0.4s;
@@ -182,9 +185,24 @@
     }
 
     #game-over-overlay {
-      background: rgba(5, 5, 15, 0.65);
-      backdrop-filter: blur(10px);
+      background: rgba(5, 5, 15, 0.74);
     }
+
+    /* Optional performance readout — press F in-game (or open with ?perf) */
+    #perf {
+      position: fixed;
+      bottom: 8px;
+      left: 12px;
+      z-index: 100;
+      font: 12px/1.4 monospace;
+      color: #9dffb0;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 4px 9px;
+      border-radius: 4px;
+      pointer-events: none;
+      display: none;
+    }
+    #perf.show { display: block; }
 
     .gesture-hint {
       margin-top: 16px;
@@ -239,7 +257,8 @@
   </div>
 
   <div id="combo-display"></div>
-  <div id="version-badge">🗡️ v2.5 · Fingertip-Only Blade</div>
+  <div id="version-badge">🗡️ v2.6 · Fingertip-Only Blade</div>
+  <div id="perf"></div>
 
   <!-- Start Overlay -->
   <div id="start-overlay" class="overlay">
@@ -260,8 +279,7 @@
   </div>
 </div>
 
-<!-- MediaPipe Hands via CDN -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<!-- MediaPipe Hands via CDN (camera is opened directly with getUserMedia — camera_utils no longer needed) -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
 <script>
