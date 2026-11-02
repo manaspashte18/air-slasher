@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>🍉 Air Slasher — Fingertip Katana v2.7</title>
+  <title>🍉 Air Slasher — Fingertip Katana v2.8</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -259,7 +259,7 @@
   </div>
 
   <div id="combo-display"></div>
-  <div id="version-badge">🗡️ v2.7 · 60 FPS Fingertip Tracking</div>
+  <div id="version-badge">🗡️ v2.8 · 60 FPS Fingertip Tracking</div>
   <div id="perf"></div>
 
   <!-- Start Overlay -->
@@ -289,6 +289,10 @@
 // ════════════════════════════════════════════════
 //  GAME CONFIG
 // ════════════════════════════════════════════════
+// Shown in the corner badge and in the console, so it is always obvious which build a
+// browser is really running (a cached GitHub Pages copy is otherwise hard to spot).
+const APP_VERSION = 'v2.8';
+
 const CONFIG = {
   maxLives: 3,
   fruitSpawnInterval: 900,     // ms — gets faster over time
@@ -549,30 +553,57 @@ function setupHands() {
 
 // Every constraint here is a soft "ideal": a hard max frameRate makes a 30 fps webcam
 // fail the whole request (Chrome surfaces it as NotFoundError), which looked like "no
-// camera found" even with permission granted. If a camera still refuses the preferred
-// set, retry with the plainest possible request instead of failing the game.
-async function openCamera() {
-  const preferred = {
-    audio: false,
-    video: {
-      facingMode: { ideal: 'user' },
-      width: { ideal: 640 },
-      height: { ideal: 480 },
-      // Ask for the fastest stream the camera offers: more detections per second means
-      // less extrapolation between samples and a more responsive fingertip.
-      frameRate: { ideal: 60 }
-    }
-  };
+// camera found" even with permission granted. Camera requests are also tried in order of
+// decreasing specificity (preferred -> plain -> exact device id) so one picky driver or a
+// camera that is not the system default can never block the game.
+function cameraConstraints() {
+  return [
+    {
+      audio: false,
+      video: {
+        facingMode: { ideal: 'user' },
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        // Ask for the fastest stream the camera offers: more detections per second means
+        // less extrapolation between samples and a more responsive fingertip.
+        frameRate: { ideal: 60 }
+      }
+    },
+    { audio: false, video: true }
+  ];
+}
 
+async function openCamera() {
+  const attempts = cameraConstraints();
+
+  // If the default camera cannot be opened, try every camera the browser lists by id.
   try {
-    return await navigator.mediaDevices.getUserMedia(preferred);
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    for (const device of devices) {
+      if (device.kind !== 'videoinput' || !device.deviceId) continue;
+      attempts.push({ audio: false, video: { deviceId: { exact: device.deviceId } } });
+    }
   } catch (error) {
-    const name = error && error.name;
-    const retryable = name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError' ||
-      name === 'NotFoundError' || name === 'NotSupportedError' || name === 'TypeError';
-    if (!retryable) throw error;
-    return navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+    // enumerateDevices is optional; the plain attempts above can still succeed.
   }
+
+  let lastError = null;
+  for (const constraints of attempts) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.info('Camera opened with constraints:', JSON.stringify(constraints));
+      return stream;
+    } catch (error) {
+      lastError = error;
+      const name = error && error.name;
+      console.warn('Camera attempt failed:', JSON.stringify(constraints), name, error && error.message);
+      // Denying permission is final: asking again with other constraints would just
+      // look like the page is ignoring the user's choice.
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') throw error;
+    }
+  }
+
+  throw lastError || new Error('Could not open any camera.');
 }
 
 async function startCameraAndTracking() {
@@ -1680,6 +1711,27 @@ function endGame() {
   }, 600);
 }
 
+// Turn a bare NotFoundError into something actionable: "the browser sees no camera at all"
+// and "the browser sees a camera it cannot open" need completely different fixes.
+async function describeMissingCamera() {
+  let inputs = [];
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    inputs = devices.filter((device) => device.kind === 'videoinput');
+  } catch (error) {
+    console.warn('enumerateDevices failed:', error);
+  }
+  console.info('Video inputs visible to this page:', inputs.length,
+    inputs.map((device) => device.label || device.deviceId));
+
+  if (inputs.length === 0) {
+    return 'The browser cannot see any camera. Turn on Settings > Privacy & security > Camera ' +
+      '(including "Let desktop apps access your camera"), then reload this page.';
+  }
+  return `The browser sees ${inputs.length} camera${inputs.length > 1 ? 's' : ''} but cannot open one. ` +
+    'Close apps that are using the camera, then press START GAME again.';
+}
+
 // ════════════════════════════════════════════════
 //  INIT
 // ════════════════════════════════════════════════
@@ -1699,9 +1751,14 @@ startBtn.addEventListener('click', async () => {
   } catch (err) {
     console.error('Camera / hand tracking startup failed:', err);
     let message = err.message || 'Unexpected camera error.';
-    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') message = 'Camera permission was denied. Allow camera access for this site.';
-    else if (err.name === 'NotFoundError') message = 'No camera was found. Connect a camera and try again.';
-    else if (err.name === 'NotReadableError') message = 'The camera is being used by another app. Close it and try again.';
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      message = 'Camera permission was denied. Allow camera access for this site, then press START GAME again.';
+    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      message = await describeMissingCamera();
+    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+      message = 'The camera is being used by another app. Close it and press START GAME again.';
+    }
+    console.info(`Air Slasher ${APP_VERSION} — camera error:`, err.name, err.message);
     loadingText.textContent = `Unable to start: ${message}`;
     startBtn.textContent = '▶ START GAME';
     startBtn.disabled = false;
@@ -1723,6 +1780,7 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener('resize', resizeCanvas, { passive: true });
 window.addEventListener('orientationchange', resizeCanvas, { passive: true });
 resizeCanvas();
+console.info(`Air Slasher ${APP_VERSION} loaded`);
 requestAnimationFrame(gameLoop);
 </script>
 </body>
