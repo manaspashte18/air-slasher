@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>🍉 Air Slasher — Fingertip Katana v2.6</title>
+  <title>🍉 Air Slasher — Fingertip Katana v2.7</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -259,7 +259,7 @@
   </div>
 
   <div id="combo-display"></div>
-  <div id="version-badge">🗡️ v2.6 · Fingertip-Only Blade</div>
+  <div id="version-badge">🗡️ v2.7 · 60 FPS Fingertip Tracking</div>
   <div id="perf"></div>
 
   <!-- Start Overlay -->
@@ -433,6 +433,28 @@ function playComboSound(count) {
 }
 
 // ── Smooth Fingertip & Knife Tracking System ──
+// The webcam / MediaPipe pipeline delivers fingertip samples at ~25-35 Hz while the
+// screen renders at 60 Hz. Writing those samples straight into the drawing position made
+// the knife jump to each new detection and then freeze until the next one (stair-stepping).
+// Instead we keep timestamped samples, estimate velocity, and resolve the tip position on
+// every render frame with bounded forward prediction + a speed-adaptive low-pass filter.
+const HAND_TRACKING = {
+  sampleHistory: 20,      // samples kept for velocity estimation
+  lostTimeoutMs: 260,     // finger considered gone after this long without a detection
+  velocityWindowMs: 120,  // ms — sample window used to fit swipe velocity
+  velocityTau: 0.04,      // s — residual smoothing on the fitted velocity
+  // Landmark noise still produces a fake ~150 px/s "velocity" on a held-still finger.
+  // Prediction only kicks in above the noise floor, so idle hands stay dead calm.
+  velocityGateMin: 140,   // px/s — below this the hand is treated as still
+  velocityGateMax: 380,   // px/s — at/above this prediction runs at full strength
+  leadBiasMs: 16,         // ms of intentional lead to offset camera + model latency
+  maxLeadMs: 48,          // cap on extrapolation so a flick never overshoots wildly
+  maxLeadPx: 170,         // cap on predicted travel per frame
+  stillTau: 0.085,        // s — smoothing when the hand is nearly still (kills shimmer)
+  motionTau: 0.016,       // s — smoothing when the hand moves fast (keeps it glued)
+  angleTau: 0.045         // s — blade orientation smoothing
+};
+
 let playerHand = {
   active: false,
   targetX: -1,
@@ -449,8 +471,13 @@ let playerHand = {
   angle: 0,
   bladeLen: 110,
   gripLen: 50,
+  targetBladeLen: 110,
+  targetGripLen: 50,
   trail: [],
-  lastSeenTime: 0
+  lastSeenTime: 0,
+  samples: [],
+  vx: 0,
+  vy: 0
 };
 
 bestEl.textContent = bestScore;
@@ -503,8 +530,8 @@ function setupHands() {
   hands.setOptions({
     maxNumHands: 1,
     modelComplexity: 0,
-    minDetectionConfidence: 0.55,
-    minTrackingConfidence: 0.55,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5,
   });
 
   hands.onResults((results) => {
@@ -532,7 +559,9 @@ async function startCameraAndTracking() {
       facingMode: { ideal: 'user' },
       width: { ideal: 640 },
       height: { ideal: 480 },
-      frameRate: { ideal: 30, max: 30 }
+      // Ask for the fastest stream the camera offers: more detections per second means
+      // less extrapolation between samples and a more responsive fingertip.
+      frameRate: { ideal: 60, max: 60 }
     }
   });
 
@@ -602,6 +631,9 @@ function stopCameraAndTracking() {
   video.pause();
   video.srcObject = null;
   playerHand.active = false;
+  playerHand.samples.length = 0;
+  playerHand.vx = 0;
+  playerHand.vy = 0;
 }
 
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -648,6 +680,86 @@ function lerpAngle(a, b, t) {
   while (diff > Math.PI) diff -= Math.PI * 2;
   while (diff < -Math.PI) diff += Math.PI * 2;
   return a + diff * t;
+}
+
+// Frame-rate independent smoothing factor for a given time constant (seconds).
+function smoothingAlpha(dtSeconds, tauSeconds) {
+  return 1 - Math.exp(-dtSeconds / Math.max(tauSeconds, 0.001));
+}
+
+// Store one fingertip detection and maintain a smoothed velocity estimate.
+function pushHandSample(x, y, angle, bladeLen, gripLen, now) {
+  const samples = playerHand.samples;
+  const prev = samples[samples.length - 1];
+
+  // Keep the angle continuous around ±π so smoothing never spins the long way round.
+  if (prev) {
+    while (angle - prev.angle > Math.PI) angle -= Math.PI * 2;
+    while (angle - prev.angle < -Math.PI) angle += Math.PI * 2;
+  }
+
+  samples.push({ x, y, angle, bladeLen, gripLen, t: now });
+  if (samples.length > HAND_TRACKING.sampleHistory) samples.shift();
+
+  if (prev) {
+    updateHandVelocity(now);
+  } else {
+    playerHand.vx = 0;
+    playerHand.vy = 0;
+    // First sample after a (re)start: snap so the blade does not swing in from nowhere.
+    playerHand.angle = angle;
+  }
+}
+
+// Fit a straight line through the recent samples and use its slope as the fingertip
+// velocity. Endpoint differencing turns every landmark wobble into a huge fake velocity;
+// a least-squares fit over ~120 ms averages that noise out, so a still hand predicts zero.
+function updateHandVelocity(now) {
+  const samples = playerHand.samples;
+  if (samples.length < 3) {
+    playerHand.vx = 0;
+    playerHand.vy = 0;
+    return;
+  }
+
+  let n = 0, sumU = 0, sumX = 0, sumY = 0, sumUU = 0, sumUX = 0, sumUY = 0;
+  for (let i = samples.length - 1; i >= 0; i--) {
+    const sample = samples[i];
+    const u = now - sample.t;
+    if (u > HAND_TRACKING.velocityWindowMs && n >= 3) break;
+    n++;
+    sumU += u;
+    sumX += sample.x;
+    sumY += sample.y;
+    sumUU += u * u;
+    sumUX += u * sample.x;
+    sumUY += u * sample.y;
+  }
+
+  const denom = n * sumUU - sumU * sumU;
+  if (n < 3 || Math.abs(denom) < 1e-6) {
+    playerHand.vx = 0;
+    playerHand.vy = 0;
+    return;
+  }
+
+  // u is "ms before now", so the fitted slope is the negative of the real velocity;
+  // u is also in ms, hence the * 1000 to get px/second.
+  let vx = -((n * sumUX - sumU * sumX) / denom) * 1000;
+  let vy = -((n * sumUY - sumU * sumY) / denom) * 1000;
+
+  // Discard impossible speeds (usually a mis-tracked joint).
+  const speed = Math.hypot(vx, vy);
+  const maxSpeed = 12000;
+  if (speed > maxSpeed) {
+    vx *= maxSpeed / speed;
+    vy *= maxSpeed / speed;
+  }
+
+  const dt = Math.max(now - (samples[samples.length - 2]?.t ?? now - 16), 8) / 1000;
+  const vAlpha = smoothingAlpha(dt, HAND_TRACKING.velocityTau);
+  playerHand.vx += (vx - playerHand.vx) * vAlpha;
+  playerHand.vy += (vy - playerHand.vy) * vAlpha;
 }
 
 // ════════════════════════════════════════════════
@@ -833,13 +945,21 @@ function onHandResults(results) {
   playerHand.targetX = indexTip.x;
   playerHand.targetY = indexTip.y;
   playerHand.active = true;
-  playerHand.lastSeenTime = performance.now();
+
+  const now = performance.now();
+  playerHand.lastSeenTime = now;
 
   // Calibrate blade length to fit from index fingertip down to knuckle
   const fingerDist = Math.hypot(indexTip.x - knucklePt.x, indexTip.y - knucklePt.y);
   const handDist = Math.hypot(indexTip.x - wristPt.x, indexTip.y - wristPt.y);
-  playerHand.bladeLen = Math.max(75, Math.min(fingerDist * 1.35, 140));
-  playerHand.gripLen = Math.max(45, Math.min(handDist * 0.35, 75));
+  playerHand.targetBladeLen = Math.max(75, Math.min(fingerDist * 1.35, 140));
+  playerHand.targetGripLen = Math.max(45, Math.min(handDist * 0.35, 75));
+
+  if (playerHand.bladeLen === undefined) playerHand.bladeLen = playerHand.targetBladeLen;
+  if (playerHand.gripLen === undefined) playerHand.gripLen = playerHand.targetGripLen;
+
+  pushHandSample(indexTip.x, indexTip.y, playerHand.targetAngle,
+    playerHand.targetBladeLen, playerHand.targetGripLen, now);
 
   if (playerHand.x < 0) {
     playerHand.x = indexTip.x;
@@ -847,6 +967,100 @@ function onHandResults(results) {
     playerHand.lastX = indexTip.x;
     playerHand.lastY = indexTip.y;
     playerHand.angle = playerHand.targetAngle;
+    playerHand.bladeLen = playerHand.targetBladeLen;
+    playerHand.gripLen = playerHand.targetGripLen;
+  }
+}
+
+// ════════════════════════════════════════════════
+//  60 FPS FINGERTIP MOTION SOLVER
+//  Extrapolates the newest detection to "now", then low-passes it so the blade moves
+//  on every rendered frame instead of stepping once per camera detection.
+// ════════════════════════════════════════════════
+function updateHandMotion(dt, now) {
+  const samples = playerHand.samples;
+  if (!playerHand.active || samples.length === 0) return;
+
+  const newest = samples[samples.length - 1];
+  const sinceSample = Math.max(0, now - newest.t);
+
+  // Detections stopped: bleed off the predicted velocity, then drop the hand.
+  if (sinceSample > HAND_TRACKING.lostTimeoutMs) {
+    playerHand.active = false;
+    playerHand.vx = 0;
+    playerHand.vy = 0;
+    return;
+  }
+
+  const dtSeconds = Math.min(Math.max(dt, 1), 50) / 1000;
+  const speed = Math.hypot(playerHand.vx, playerHand.vy);
+
+  // 0 = held still (no prediction, heavy smoothing), 1 = real swipe (full prediction).
+  const gateRange = HAND_TRACKING.velocityGateMax - HAND_TRACKING.velocityGateMin;
+  const motionMix = Math.min(Math.max((speed - HAND_TRACKING.velocityGateMin) / gateRange, 0), 1);
+  const tau = HAND_TRACKING.stillTau +
+    (HAND_TRACKING.motionTau - HAND_TRACKING.stillTau) * motionMix;
+
+  // Predict where the fingertip is *right now*: time since the last detection plus a
+  // small fixed lead that hides the camera + model latency. tau is added because the
+  // low-pass introduces that much steady-state lag, which the lead cancels out.
+  const leadMs = Math.min(sinceSample + HAND_TRACKING.leadBiasMs, HAND_TRACKING.maxLeadMs)
+    + tau * 1000;
+  const leadVx = playerHand.vx * motionMix;
+  const leadVy = playerHand.vy * motionMix;
+  let predictX = newest.x + (leadVx * leadMs) / 1000;
+  let predictY = newest.y + (leadVy * leadMs) / 1000;
+
+  // Never let a velocity spike fling the knife across the screen.
+  const leadDx = predictX - newest.x;
+  const leadDy = predictY - newest.y;
+  const leadDist = Math.hypot(leadDx, leadDy);
+  if (leadDist > HAND_TRACKING.maxLeadPx) {
+    const k = HAND_TRACKING.maxLeadPx / leadDist;
+    predictX = newest.x + leadDx * k;
+    predictY = newest.y + leadDy * k;
+  }
+
+  // Keep the cursor inside the play area even if the hand leaves the frame.
+  const margin = 120;
+  const boundsW = canvas._cssWidth || window.innerWidth;
+  const boundsH = canvas._cssHeight || window.innerHeight;
+  predictX = Math.max(-margin, Math.min(boundsW + margin, predictX));
+  predictY = Math.max(-margin, Math.min(boundsH + margin, predictY));
+
+  playerHand.lastX = playerHand.x;
+  playerHand.lastY = playerHand.y;
+
+  const posAlpha = smoothingAlpha(dtSeconds, tau);
+  playerHand.x += (predictX - playerHand.x) * posAlpha;
+  playerHand.y += (predictY - playerHand.y) * posAlpha;
+
+  const angleAlpha = smoothingAlpha(dtSeconds, HAND_TRACKING.angleTau);
+  playerHand.angle = lerpAngle(playerHand.angle, newest.angle, angleAlpha);
+
+  // Blade must not visibly resize detection-to-detection.
+  const sizeAlpha = smoothingAlpha(dtSeconds, 0.12);
+  playerHand.bladeLen += (newest.bladeLen - playerHand.bladeLen) * sizeAlpha;
+  playerHand.gripLen += (newest.gripLen - playerHand.gripLen) * sizeAlpha;
+
+  playerHand.tipX = playerHand.x;
+  playerHand.tipY = playerHand.y;
+
+  // Base of blade (guard position) extends down towards knuckle
+  const bLen = playerHand.bladeLen || 110;
+  playerHand.baseX = playerHand.x - Math.sin(playerHand.angle) * bLen;
+  playerHand.baseY = playerHand.y + Math.cos(playerHand.angle) * bLen;
+
+  if (!(playerHand.lastBaseX >= 0)) {
+    playerHand.lastBaseX = playerHand.baseX;
+    playerHand.lastBaseY = playerHand.baseY;
+  }
+
+  const stepDist = Math.hypot(playerHand.x - playerHand.lastX, playerHand.y - playerHand.lastY);
+  if (gameState === 'playing' && stepDist > 1.0) {
+    // Golden slash trail emits directly from the knife tip / index fingertip!
+    playerHand.trail.push({ x: playerHand.x, y: playerHand.y, age: 1.0 });
+    if (playerHand.trail.length > 22) playerHand.trail.shift();
   }
 }
 
@@ -1118,47 +1332,8 @@ function gameLoop(timestamp) {
   const cssHeight = canvas._cssHeight || window.innerHeight;
   ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-  // ── 60 FPS Smooth Hand Interpolation ──
-  if (playerHand.active) {
-    if (performance.now() - playerHand.lastSeenTime > 400) {
-      playerHand.active = false;
-    } else {
-      playerHand.lastX = playerHand.x;
-      playerHand.lastY = playerHand.y;
-      playerHand.lastBaseX = playerHand.baseX;
-      playerHand.lastBaseY = playerHand.baseY;
-
-      const dx = playerHand.targetX - playerHand.x;
-      const dy = playerHand.targetY - playerHand.y;
-      const dist = Math.hypot(dx, dy);
-
-      // Exponential smoothing is independent of the display refresh rate.
-      const followRate = 1 - Math.pow(0.0008, frameScale);
-      playerHand.x += dx * followRate;
-      playerHand.y += dy * followRate;
-      playerHand.angle = lerpAngle(playerHand.angle, playerHand.targetAngle, 1 - Math.pow(0.08, frameScale));
-
-      // Knife tip is locked directly to the index fingertip!
-      playerHand.tipX = playerHand.x;
-      playerHand.tipY = playerHand.y;
-
-      // Base of blade (guard position) extends down towards knuckle
-      const bLen = playerHand.bladeLen || 110;
-      playerHand.baseX = playerHand.x - Math.sin(playerHand.angle) * bLen;
-      playerHand.baseY = playerHand.y + Math.cos(playerHand.angle) * bLen;
-
-      if (playerHand.lastBaseX === undefined || playerHand.lastBaseX < 0) {
-        playerHand.lastBaseX = playerHand.baseX;
-        playerHand.lastBaseY = playerHand.baseY;
-      }
-
-      if (gameState === 'playing' && dist > 1.2) {
-        // Golden slash trail emits directly from the knife tip / index fingertip!
-        playerHand.trail.push({ x: playerHand.x, y: playerHand.y, age: 1.0 });
-        if (playerHand.trail.length > 22) playerHand.trail.shift();
-      }
-    }
-  }
+  // ── 60 FPS Hand Motion: prediction + adaptive smoothing every rendered frame ──
+  updateHandMotion(dt, timestamp);
 
   if (gameState === 'playing') {
     // Difficulty ramp
@@ -1446,6 +1621,11 @@ function startGame() {
   playerHand.trail = [];
   playerHand.angle = 0;
   playerHand.targetAngle = 0;
+  playerHand.samples.length = 0;
+  playerHand.vx = 0;
+  playerHand.vy = 0;
+  playerHand.x = -1;
+  playerHand.y = -1;
   comboCount = 0;
   totalSliced = 0;
   totalMissed = 0;
