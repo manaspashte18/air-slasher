@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>🍉 Air Slasher — Fingertip Katana v2.8</title>
+  <title>🍉 Air Slasher — Fingertip Katana v2.9</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -31,13 +31,20 @@
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       user-select: none;
       height: 100vh;
+      /* Phones: the mobile URL bar collapses and 100vh would leave a gap/push the HUD
+         off screen, so use the dynamic viewport height where it is supported. */
+      height: 100dvh;
       width: 100vw;
+      overscroll-behavior: none;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
     #container {
       position: relative;
       width: 100vw;
       height: 100vh;
+      height: 100dvh;
     }
 
     video {
@@ -235,12 +242,117 @@
       font-size: 14px;
       opacity: 0.5;
     }
+
+    /* ── Phones & small screens ────────────────────────────────────────────────
+       All sizes above are tuned for a desktop play area. On a phone those same
+       pixel values eat the whole screen: "🍉 Air Slasher" at 56px is wider than
+       the viewport and the three HUD boxes fill the top bar. Everything here only
+       applies on narrow/coarse-pointer screens, so desktop is untouched. */
+    @media (max-width: 820px) {
+      #hud {
+        padding: calc(8px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
+                  8px calc(10px + env(safe-area-inset-left));
+        gap: 6px;
+      }
+
+      .hud-box {
+        padding: 5px 11px;
+        border-radius: 10px;
+        font-size: 15px;
+        letter-spacing: 0.5px;
+      }
+
+      .hud-box .label {
+        font-size: 9px;
+        letter-spacing: 1.2px;
+        margin-bottom: 1px;
+      }
+
+      #lives-display span {
+        font-size: 16px;
+        margin-right: 1px;
+      }
+
+      #combo-display {
+        font-size: 34px;
+      }
+
+      .overlay h1 {
+        font-size: 30px;
+        margin-bottom: 6px;
+      }
+
+      .overlay .subtitle {
+        font-size: 13px;
+        margin-bottom: 22px;
+        max-width: 86vw;
+      }
+
+      .overlay button {
+        font-size: 16px;
+        padding: 12px 30px;
+      }
+
+      .spinner {
+        width: 26px;
+        height: 26px;
+        border-width: 3px;
+        margin: 14px auto 8px;
+      }
+
+      #loading-text {
+        font-size: 12px;
+        max-width: 88vw;
+        line-height: 1.45;
+      }
+
+      #game-over-overlay .final-score {
+        font-size: 44px;
+        margin: 4px 0;
+      }
+
+      #game-over-overlay .stats {
+        font-size: 13px;
+        margin-bottom: 20px;
+        max-width: 86vw;
+      }
+
+      .gesture-hint {
+        font-size: 12px;
+        margin-top: 12px;
+        max-width: 86vw;
+      }
+
+      #version-badge {
+        font-size: 9px;
+        padding: 2px 6px;
+        bottom: calc(6px + env(safe-area-inset-bottom));
+        right: calc(8px + env(safe-area-inset-right));
+      }
+
+      #perf {
+        font-size: 10px;
+        bottom: calc(6px + env(safe-area-inset-bottom));
+        left: calc(8px + env(safe-area-inset-left));
+      }
+    }
+
+    /* Landscape phones: very little vertical room, so drop the subtitle entirely. */
+    @media (max-height: 520px) and (pointer: coarse) {
+      .overlay h1 { font-size: 24px; }
+      .overlay .subtitle { display: none; }
+      .overlay button { font-size: 15px; padding: 9px 24px; }
+      .spinner { margin: 10px auto 6px; }
+      #game-over-overlay .final-score { font-size: 32px; }
+      #game-over-overlay .stats { margin-bottom: 14px; }
+      .gesture-hint { font-size: 11px; margin-top: 8px; }
+    }
   </style>
 </head>
 <body>
 
 <div id="container">
-  <video id="webcam" autoplay playsinline></video>
+  <video id="webcam" autoplay playsinline muted></video>
   <canvas id="gameCanvas"></canvas>
 
   <!-- HUD -->
@@ -259,7 +371,7 @@
   </div>
 
   <div id="combo-display"></div>
-  <div id="version-badge">🗡️ v2.8 · 60 FPS Fingertip Tracking</div>
+  <div id="version-badge">🗡️ v2.9 · 60 FPS Fingertip Tracking</div>
   <div id="perf"></div>
 
   <!-- Start Overlay -->
@@ -291,7 +403,7 @@
 // ════════════════════════════════════════════════
 // Shown in the corner badge and in the console, so it is always obvious which build a
 // browser is really running (a cached GitHub Pages copy is otherwise hard to spot).
-const APP_VERSION = 'v2.8';
+const APP_VERSION = 'v2.9';
 
 const CONFIG = {
   maxLives: 3,
@@ -492,9 +604,22 @@ bestEl.textContent = bestScore;
 const MAX_RENDER_PIXELS = 1600 * 900;
 const RENDER_SCALE = 0.85;
 
+// Fruits, the knife and the canvas text are sized in CSS pixels that were tuned for a
+// desktop play area. On a phone the same values swallow the screen (one fruit covered a
+// quarter of the width), so everything drawn gets multiplied by a viewport scale.
+// Any window at or above the reference size keeps exactly the original sizes (scale 1).
+const SIZING = { refWidth: 1280, refHeight: 720, minScale: 0.5 };
+let viewScale = 1;
+
+function computeViewScale(cssWidth, cssHeight) {
+  const fit = Math.min(cssWidth / SIZING.refWidth, cssHeight / SIZING.refHeight);
+  return Math.min(1, Math.max(SIZING.minScale, fit));
+}
+
 function resizeCanvas() {
   const cssWidth = window.innerWidth;
   const cssHeight = window.innerHeight;
+  viewScale = computeViewScale(cssWidth, cssHeight);
   const pixelBudgetScale = Math.min(1, Math.sqrt(MAX_RENDER_PIXELS / (cssWidth * cssHeight)));
   const renderScale = Math.min((window.devicePixelRatio || 1) * RENDER_SCALE, pixelBudgetScale);
 
@@ -1001,8 +1126,11 @@ function onHandResults(results) {
   // Calibrate blade length to fit from index fingertip down to knuckle
   const fingerDist = Math.hypot(indexTip.x - knucklePt.x, indexTip.y - knucklePt.y);
   const handDist = Math.hypot(indexTip.x - wristPt.x, indexTip.y - wristPt.y);
-  playerHand.targetBladeLen = Math.max(75, Math.min(fingerDist * 1.35, 140));
-  playerHand.targetGripLen = Math.max(45, Math.min(handDist * 0.35, 75));
+  // The blade follows the on-screen size of the real hand, which the portrait camera crop
+  // magnifies a lot on a phone, so its bounds are scaled with the viewport as well.
+  const handScale = Math.min(1, Math.max(0.55, viewScale));
+  playerHand.targetBladeLen = Math.max(75 * handScale, Math.min(fingerDist * 1.35, 140 * handScale));
+  playerHand.targetGripLen = Math.max(45 * handScale, Math.min(handDist * 0.35, 75 * handScale));
 
   if (playerHand.bladeLen === undefined) playerHand.bladeLen = playerHand.targetBladeLen;
   if (playerHand.gripLen === undefined) playerHand.gripLen = playerHand.targetGripLen;
@@ -1120,10 +1248,10 @@ function spawnFruit() {
   const isBomb = Math.random() < CONFIG.bombChance;
   const type = isBomb ? BOMB : FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
 
-  const size = isBomb ? 95 : 85 + Math.random() * 25;
+  const size = (isBomb ? 95 : 85 + Math.random() * 25) * viewScale;
 
   // Spawn along bottom width, comfortably inset from edges
-  const margin = Math.max(80, canvas.width * 0.12);
+  const margin = Math.max(80 * viewScale, canvas.width * 0.12);
   const x = margin + Math.random() * (canvas.width - margin * 2);
   const y = canvas.height + size * 0.5;
 
@@ -1224,7 +1352,9 @@ function checkSlices() {
     // ONLY the knife tip / index fingertip cuts the fruit (line segment of tip motion)
     const dist = distToSegment(fruit.x, fruit.y, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
 
-    if (dist < CONFIG.sliceRadius + fruit.size * 0.45) {
+    // Scale the cut radius with the sprites so tiny phones stay playable (never below 70 %
+    // of the desktop radius, otherwise a fingertip cut becomes a precision drill).
+    if (dist < CONFIG.sliceRadius * Math.max(0.7, viewScale) + fruit.size * 0.45) {
         fruit.sliced = true;
 
         if (fruit.isBomb) {
@@ -1493,7 +1623,7 @@ function gameLoop(timestamp) {
     ctx.globalAlpha = p.life;
 
     if (p.isText) {
-      ctx.font = 'bold 28px Segoe UI, sans-serif';
+      ctx.font = `bold ${Math.round(28 * Math.max(0.65, viewScale))}px Segoe UI, sans-serif`;
       ctx.fillStyle = p.color;
       ctx.textAlign = 'center';
       ctx.shadowColor = 'rgba(255,200,0,0.8)';
@@ -1537,7 +1667,7 @@ function gameLoop(timestamp) {
       }
       ctx.lineTo(trail[trail.length - 1].x, trail[trail.length - 1].y);
       ctx.strokeStyle = 'rgba(255, 215, 0, 0.32)';
-      ctx.lineWidth = 22;
+      ctx.lineWidth = 22 * Math.max(0.6, viewScale);
       ctx.stroke();
 
       // 2. Inner white-hot neon blade core (Bezier smoothed)
@@ -1550,7 +1680,7 @@ function gameLoop(timestamp) {
       }
       ctx.lineTo(trail[trail.length - 1].x, trail[trail.length - 1].y);
       ctx.strokeStyle = '#fffbf0';
-      ctx.lineWidth = 8;
+      ctx.lineWidth = 8 * Math.max(0.6, viewScale);
       ctx.shadowColor = '#ffd000';
       ctx.shadowBlur = 10;
       ctx.stroke();
