@@ -547,13 +547,12 @@ function setupHands() {
   return hands;
 }
 
-async function startCameraAndTracking() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error('Camera access requires HTTPS and a browser that supports getUserMedia.');
-  }
-
-  const hands = setupHands();
-  const stream = await navigator.mediaDevices.getUserMedia({
+// Every constraint here is a soft "ideal": a hard max frameRate makes a 30 fps webcam
+// fail the whole request (Chrome surfaces it as NotFoundError), which looked like "no
+// camera found" even with permission granted. If a camera still refuses the preferred
+// set, retry with the plainest possible request instead of failing the game.
+async function openCamera() {
+  const preferred = {
     audio: false,
     video: {
       facingMode: { ideal: 'user' },
@@ -561,9 +560,28 @@ async function startCameraAndTracking() {
       height: { ideal: 480 },
       // Ask for the fastest stream the camera offers: more detections per second means
       // less extrapolation between samples and a more responsive fingertip.
-      frameRate: { ideal: 60, max: 60 }
+      frameRate: { ideal: 60 }
     }
-  });
+  };
+
+  try {
+    return await navigator.mediaDevices.getUserMedia(preferred);
+  } catch (error) {
+    const name = error && error.name;
+    const retryable = name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError' ||
+      name === 'NotFoundError' || name === 'NotSupportedError' || name === 'TypeError';
+    if (!retryable) throw error;
+    return navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+  }
+}
+
+async function startCameraAndTracking() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Camera access requires HTTPS and a browser that supports getUserMedia.');
+  }
+
+  const hands = setupHands();
+  const stream = await openCamera();
 
   video.muted = true;
   video.playsInline = true;
