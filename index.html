@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>🍉 Air Slasher — Fingertip Katana v3.0</title>
+  <title>🍉 Air Slasher — Fingertip Katana v3.1</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -256,58 +256,123 @@
       background: radial-gradient(125% 95% at 50% -12%, #241543 0%, #150d28 36%, #08080f 72%, #04040a 100%);
     }
 
+    /* ── Menu atmosphere ──────────────────────────────────────────────
+       No stock neon grid. The room is lit by slow, drifting ink plumes,
+       a pool of light on the floor, occasional blade streaks and a thin
+       layer of film grain — and the streaks are tinted with the glow of
+       whatever blade you have equipped. */
     .menu-bg {
       position: absolute;
       inset: 0;
       overflow: hidden;
       pointer-events: none;
+      --slash: 255, 222, 120;
     }
 
-    .orb {
+    .menu-bg-fixed { position: fixed; }
+
+    .ink {
       position: absolute;
-      border-radius: 50%;
-      filter: blur(58px);
-      opacity: 0.5;
+      filter: blur(54px);
+      opacity: 0.52;
+      mix-blend-mode: screen;
+      border-radius: 46% 54% 62% 38% / 52% 44% 56% 48%;
       will-change: transform;
     }
 
-    .orb-a {
-      width: 46vmax; height: 46vmax;
-      left: -16vmax; top: -18vmax;
-      background: radial-gradient(circle, #ff416c, transparent 66%);
-      animation: orbDrift 18s ease-in-out infinite alternate;
+    .ink-a {
+      width: 64vmax; height: 42vmax;
+      left: -20vmax; top: -10vmax;
+      background: radial-gradient(circle at 42% 46%, rgba(108, 52, 220, 0.62), transparent 68%);
+      animation: inkDrift 27s ease-in-out infinite alternate;
     }
 
-    .orb-b {
-      width: 42vmax; height: 42vmax;
-      right: -14vmax; bottom: -20vmax;
-      background: radial-gradient(circle, #4d96ff, transparent 66%);
-      animation: orbDrift 23s ease-in-out infinite alternate-reverse;
+    .ink-b {
+      width: 56vmax; height: 48vmax;
+      right: -18vmax; top: 2vmax;
+      background: radial-gradient(circle at 55% 48%, rgba(10, 148, 186, 0.48), transparent 70%);
+      animation: inkDrift 35s ease-in-out infinite alternate-reverse;
     }
 
-    @keyframes orbDrift {
-      from { transform: translate3d(0, 0, 0) scale(1); }
-      to   { transform: translate3d(4vmax, 3vmax, 0) scale(1.14); }
+    .ink-c {
+      width: 78vmax; height: 34vmax;
+      left: 4vmax; bottom: -18vmax;
+      background: radial-gradient(circle at 50% 52%, rgba(196, 38, 132, 0.34), transparent 72%);
+      animation: inkDrift 31s ease-in-out infinite alternate;
     }
 
-    .grid-floor {
+    @keyframes inkDrift {
+      from { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+      to   { transform: translate3d(5vmax, -3vmax, 0) scale(1.16) rotate(9deg); }
+    }
+
+    .horizon {
       position: absolute;
-      left: -30%; right: -30%; bottom: -8%;
-      height: 62%;
-      background-image:
-        linear-gradient(rgba(120, 160, 255, 0.22) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(120, 160, 255, 0.22) 1px, transparent 1px);
-      background-size: 64px 64px;
-      transform: perspective(420px) rotateX(70deg);
-      -webkit-mask-image: linear-gradient(transparent, #000 58%);
-      mask-image: linear-gradient(transparent, #000 58%);
-      opacity: 0.45;
-      animation: floorScroll 7s linear infinite;
+      left: 50%; bottom: -16vmax;
+      width: 168vmax; height: 54vmax;
+      transform: translateX(-50%);
+      background: radial-gradient(ellipse at 50% 62%, rgba(124, 74, 240, 0.3), rgba(20, 120, 170, 0.12) 42%, transparent 70%);
+      filter: blur(26px);
     }
 
-    @keyframes floorScroll {
-      to { background-position: 0 64px, 0 0; }
+    .slash {
+      position: absolute;
+      left: -30%; width: 160%;
+      height: 2px;
+      opacity: 0;
+      border-radius: 2px;
+      background: linear-gradient(90deg, transparent 2%, rgba(var(--slash), 0.5) 26%, #fff 50%, rgba(var(--slash), 0.5) 74%, transparent 98%);
+      box-shadow: 0 0 14px rgba(var(--slash), 0.8), 0 0 38px rgba(var(--slash), 0.42);
+      animation: slashSweep 15s cubic-bezier(0.32, 0.06, 0.2, 1) infinite;
+      will-change: transform, opacity;
     }
+
+    .slash-1 { top: 23%; --rot: -13deg; animation-duration: 15s; animation-delay: 0s; }
+    .slash-2 { top: 54%; --rot: 8deg; animation-duration: 19s; animation-delay: -6.5s; }
+    .slash-3 { top: 76%; --rot: -5deg; animation-duration: 23s; animation-delay: -13s; }
+
+    @keyframes slashSweep {
+      0%, 72%   { opacity: 0; transform: rotate(var(--rot)) translate3d(-34%, 0, 0) scaleX(0.55); }
+      76%       { opacity: 1; }
+      83%       { opacity: 0.85; }
+      90%, 100% { opacity: 0; transform: rotate(var(--rot)) translate3d(18%, 0, 0) scaleX(1.08); }
+    }
+
+    .grain {
+      position: absolute;
+      inset: 0;
+      opacity: 0.055;
+      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 180px 180px;
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(120% 92% at 50% 40%, transparent 36%, rgba(2, 2, 8, 0.6) 100%);
+    }
+
+    .icon-btn {
+      width: 38px; height: 38px;
+      display: grid; place-items: center;
+      border-radius: 50%;
+      font-size: 15px;
+      line-height: 1;
+      cursor: pointer;
+      color: #efeaff;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+      transition: background 0.18s ease, transform 0.18s ease, opacity 0.18s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .icon-btn:hover { background: rgba(255, 255, 255, 0.16); transform: translateY(-1px); }
+    .icon-btn:active { transform: translateY(0); }
+    .icon-btn.off { opacity: 0.45; }
+
+    .top-right { display: flex; align-items: center; gap: 8px; }
 
     .fruit-rain span {
       position: absolute;
@@ -533,6 +598,8 @@
     .store-title span { color: #ffd93d; }
 
     .skin-grid {
+      position: relative;
+      z-index: 1;
       width: min(980px, 94vw);
       margin: 4px auto 0;
       padding: 10px;
@@ -624,6 +691,8 @@
     }
 
     .store-foot {
+      position: relative;
+      z-index: 1;
       padding: 12px 16px calc(18px + env(safe-area-inset-bottom));
       font-size: 12px;
       letter-spacing: 0.3px;
@@ -842,15 +911,20 @@
   </div>
 
   <div id="combo-display"></div>
-  <div id="version-badge">🗡️ v3.0 · 60 FPS Fingertip Tracking</div>
+  <div id="version-badge">🗡️ v3.1 · 60 FPS Fingertip Tracking</div>
   <div id="perf"></div>
 
   <!-- Home / Main Menu -->
   <div id="home-screen" class="overlay home-screen">
     <div class="menu-bg" aria-hidden="true">
-      <div class="orb orb-a"></div>
-      <div class="orb orb-b"></div>
-      <div class="grid-floor"></div>
+      <div class="ink ink-a"></div>
+      <div class="ink ink-b"></div>
+      <div class="ink ink-c"></div>
+      <div class="horizon"></div>
+      <div class="slash slash-1"></div>
+      <div class="slash slash-2"></div>
+      <div class="slash slash-3"></div>
+      <div class="grain"></div>
       <div class="fruit-rain">
         <span style="left:6%;  animation-delay:0s;   font-size:34px;">🍉</span>
         <span style="left:19%; animation-delay:2.6s;">🍊</span>
@@ -860,9 +934,11 @@
         <span style="left:74%; animation-delay:6.6s;">🍑</span>
         <span style="left:87%; animation-delay:1.9s; font-size:28px;">🫐</span>
       </div>
+      <div class="vignette"></div>
     </div>
 
     <div class="home-top">
+      <button class="icon-btn music-toggle" data-hover="music" aria-label="Toggle music">🎵</button>
       <div class="coin-pill">🪙 <span id="home-coins">0</span></div>
     </div>
 
@@ -889,10 +965,22 @@
 
   <!-- Blade Store -->
   <div id="store-screen" class="overlay store-screen hidden">
+    <div class="menu-bg menu-bg-fixed" aria-hidden="true">
+      <div class="ink ink-a"></div>
+      <div class="ink ink-c"></div>
+      <div class="horizon"></div>
+      <div class="slash slash-2"></div>
+      <div class="grain"></div>
+      <div class="vignette"></div>
+    </div>
+
     <div class="store-top">
       <button id="store-back" class="btn btn-ghost" data-hover="back">← BACK</button>
       <div class="store-title">BLADE <span>STORE</span></div>
-      <div class="coin-pill">🪙 <span id="store-coins">0</span></div>
+      <div class="top-right">
+        <button class="icon-btn music-toggle" data-hover="music" aria-label="Toggle music">🎵</button>
+        <div class="coin-pill">🪙 <span id="store-coins">0</span></div>
+      </div>
     </div>
     <div class="skin-grid" id="skin-grid"></div>
     <div class="store-foot">Every point you score earns 1 🪙 · your blades are saved on this device</div>
@@ -924,7 +1012,7 @@
 // ════════════════════════════════════════════════
 // Shown in the corner badge and in the console, so it is always obvious which build a
 // browser is really running (a cached GitHub Pages copy is otherwise hard to spot).
-const APP_VERSION = 'v3.0';
+const APP_VERSION = 'v3.1';
 
 const CONFIG = {
   maxLives: 3,
@@ -1065,7 +1153,7 @@ const SKINS = [
 
 // ── Player profile: coins earned from score, blades owned, blade equipped ──
 const SAVE_KEY = 'airslasher_save_v1';
-const profile = { coins: 0, owned: ['classic'], equipped: 'classic' };
+const profile = { coins: 0, owned: ['classic'], equipped: 'classic', music: true };
 let currentSkin = SKINS[0];
 
 function loadProfile() {
@@ -1081,6 +1169,7 @@ function loadProfile() {
     profile.equipped = SKINS.some(s => s.id === saved.equipped) && profile.owned.includes(saved.equipped)
       ? saved.equipped
       : 'classic';
+    profile.music = saved.music !== false;
   } catch (error) {
     console.warn('Could not read the saved blades:', error);
   }
@@ -1122,6 +1211,9 @@ const storeCoinsEl = document.getElementById('store-coins');
 const equippedNameEl = document.getElementById('equipped-name');
 const knifePreview = document.getElementById('knife-preview');
 const coinEarnEl  = document.getElementById('coin-earn');
+const homeMenuBg  = homeScreen.querySelector('.menu-bg');
+const storeMenuBg = storeScreen.querySelector('.menu-bg');
+const musicBtns   = document.querySelectorAll('.music-toggle');
 const storeToast  = document.getElementById('store-toast');
 const restartBtn  = document.getElementById('restart-btn');
 const finalScoreE = document.getElementById('final-score');
@@ -1234,6 +1326,248 @@ function playComboSound(count) {
     osc.start(now);
     osc.stop(now + 0.21);
   } catch (e) {}
+}
+
+// ════════════════════════════════════════════════
+//  BACKGROUND MUSIC
+//  Everything is synthesised at runtime — no audio files to download, nothing
+//  to fall out of sync with the single-file build. A 96 BPM loop in A minor:
+//  sub bass, detuned pad, pentatonic plucks, soft kick and a delay for space.
+// ════════════════════════════════════════════════
+const MUSIC = {
+  bpm: 96,
+  volume: 0.5,        // master scale — deliberately quiet under the slice SFX
+  lookahead: 0.35,    // seconds of notes scheduled ahead of the audio clock
+  loopSteps: 64       // 4 bars × 16 sixteenths
+};
+
+// Am → F → C → G, the oldest trick in the book for a reason.
+const MUSIC_BARS = [
+  { root: 110.00, chord: [220.00, 261.63, 329.63], arp: [220.00, 329.63, 261.63, 440.00] },
+  { root:  87.31, chord: [174.61, 220.00, 261.63], arp: [174.61, 261.63, 220.00, 349.23] },
+  { root: 130.81, chord: [261.63, 329.63, 392.00], arp: [261.63, 392.00, 329.63, 523.25] },
+  { root:  98.00, chord: [196.00, 246.94, 293.66], arp: [196.00, 293.66, 246.94, 392.00] }
+];
+
+let musicBus = null;
+let musicSend = null;
+let musicNoise = null;
+let musicTimer = null;
+let musicStep = 0;
+let musicNextTime = 0;
+let musicPlaying = false;
+
+function musicNoiseBuffer() {
+  if (musicNoise) return musicNoise;
+  const length = Math.floor(audioCtx.sampleRate * 0.25);
+  musicNoise = audioCtx.createBuffer(1, length, audioCtx.sampleRate);
+  const data = musicNoise.getChannelData(0);
+  for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+  return musicNoise;
+}
+
+function musicPad(chord, time, duration) {
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.Q.value = 0.7;
+  filter.frequency.setValueAtTime(620, time);
+  filter.frequency.linearRampToValueAtTime(1500, time + duration * 0.6);
+  filter.connect(musicBus);
+  filter.connect(musicSend);
+
+  chord.forEach((freq, index) => {
+    [-7, 7].forEach((detune) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.value = freq;
+      osc.detune.value = detune + index * 2;
+      gain.gain.setValueAtTime(0.0001, time);
+      gain.gain.linearRampToValueAtTime(0.03, time + 0.75);
+      gain.gain.linearRampToValueAtTime(0.0001, time + duration);
+      osc.connect(gain);
+      gain.connect(filter);
+      osc.start(time);
+      osc.stop(time + duration + 0.05);
+    });
+  });
+}
+
+function musicPluck(freq, time) {
+  const osc = audioCtx.createOscillator();
+  const filter = audioCtx.createBiquadFilter();
+  const gain = audioCtx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.value = freq;
+  filter.type = 'lowpass';
+  filter.frequency.value = 2800;
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.linearRampToValueAtTime(0.05, time + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.45);
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(musicBus);
+  gain.connect(musicSend);
+  osc.start(time);
+  osc.stop(time + 0.5);
+}
+
+function musicBass(freq, time) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, time);
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.linearRampToValueAtTime(0.1, time + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.55);
+  osc.connect(gain);
+  gain.connect(musicBus);
+  osc.start(time);
+  osc.stop(time + 0.6);
+}
+
+function musicKick(time) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(118, time);
+  osc.frequency.exponentialRampToValueAtTime(44, time + 0.12);
+  gain.gain.setValueAtTime(0.15, time);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.19);
+  osc.connect(gain);
+  gain.connect(musicBus);
+  osc.start(time);
+  osc.stop(time + 0.2);
+}
+
+function musicHat(time, level) {
+  const src = audioCtx.createBufferSource();
+  const filter = audioCtx.createBiquadFilter();
+  const gain = audioCtx.createGain();
+  src.buffer = musicNoiseBuffer();
+  filter.type = 'highpass';
+  filter.frequency.value = 7200;
+  gain.gain.setValueAtTime(level, time);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.07);
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(musicBus);
+  src.start(time);
+  src.stop(time + 0.09);
+}
+
+function scheduleMusicStep(step, time) {
+  const bar = MUSIC_BARS[Math.floor(step / 16) % MUSIC_BARS.length];
+  const sub = step % 16;
+
+  if (sub === 0) musicPad(bar.chord, time, 2.5);
+  if (sub === 0) musicBass(bar.root, time);
+  if (sub === 6) musicBass(bar.root * 1.5, time);
+  if (sub === 10) musicBass(bar.root * 2, time);
+  if (sub === 0 || sub === 8) musicKick(time);
+  if (sub % 2 === 1) musicHat(time, sub % 4 === 3 ? 0.022 : 0.012);
+  if (sub % 2 === 0 && sub !== 0 && sub !== 8) musicPluck(bar.arp[(sub / 2) % 4], time);
+  if (sub === 14) musicPluck(bar.arp[2] * 2, time);
+}
+
+function musicScheduler() {
+  if (!musicPlaying || !audioCtx) return;
+  const stepDuration = 60 / MUSIC.bpm / 4;
+  while (musicNextTime < audioCtx.currentTime + MUSIC.lookahead) {
+    scheduleMusicStep(musicStep, musicNextTime);
+    musicStep = (musicStep + 1) % MUSIC.loopSteps;
+    musicNextTime += stepDuration;
+  }
+}
+
+function startMusic() {
+  if (musicPlaying || !audioCtx) return;
+
+  // resume() is async, so a first click would otherwise start nothing at all.
+  if (audioCtx.state !== 'running') {
+    audioCtx.resume()
+      .then(() => { if (audioCtx.state === 'running') startMusic(); })
+      .catch(() => {});
+    return;
+  }
+
+  if (!musicBus) {
+    musicBus = audioCtx.createGain();
+    musicBus.gain.value = 0;
+
+    const softener = audioCtx.createBiquadFilter();
+    softener.type = 'lowpass';
+    softener.frequency.value = 5200;
+    musicBus.connect(softener);
+    softener.connect(audioCtx.destination);
+
+    // One dotted-eighth delay for space instead of a full convolver.
+    const delay = audioCtx.createDelay(1);
+    const feedback = audioCtx.createGain();
+    const wet = audioCtx.createGain();
+    delay.delayTime.value = 60 / MUSIC.bpm * 0.75;
+    feedback.gain.value = 0.26;
+    wet.gain.value = 0.3;
+    musicSend = audioCtx.createGain();
+    musicSend.gain.value = 1;
+    musicSend.connect(delay);
+    delay.connect(feedback);
+    feedback.connect(delay);
+    delay.connect(wet);
+    wet.connect(softener);
+  }
+
+  musicPlaying = true;
+  musicStep = 0;
+  musicNextTime = audioCtx.currentTime + 0.12;
+  musicBus.gain.cancelScheduledValues(audioCtx.currentTime);
+  musicBus.gain.setValueAtTime(musicBus.gain.value, audioCtx.currentTime);
+  musicBus.gain.linearRampToValueAtTime(MUSIC.volume * 0.6, audioCtx.currentTime + 1.2);
+  musicScheduler();
+  clearInterval(musicTimer);
+  musicTimer = setInterval(musicScheduler, 70);
+}
+
+function stopMusic() {
+  if (!musicPlaying) return;
+  musicPlaying = false;
+  clearInterval(musicTimer);
+  musicTimer = null;
+  if (audioCtx && musicBus) {
+    const now = audioCtx.currentTime;
+    musicBus.gain.cancelScheduledValues(now);
+    musicBus.gain.setValueAtTime(musicBus.gain.value, now);
+    musicBus.gain.linearRampToValueAtTime(0, now + 0.3);
+  }
+}
+
+function updateMusicButtons() {
+  const on = !!profile.music;
+  musicBtns.forEach((btn) => {
+    btn.textContent = on ? '🎵' : '🔇';
+    btn.classList.toggle('off', !on);
+    btn.setAttribute('aria-label', on ? 'Music on — tap to mute' : 'Music off — tap to play');
+  });
+}
+
+function toggleMusic() {
+  profile.music = !profile.music;
+  saveProfile();
+  updateMusicButtons();
+  if (profile.music) {
+    initAudio();
+    startMusic();
+  } else {
+    stopMusic();
+  }
+}
+
+// Browsers only allow audio to start after a gesture, so the first click, tap or
+// keypress unlocks the loop. Nothing is created at all if music is muted.
+function unlockMusic() {
+  if (musicPlaying || !profile.music) return;
+  initAudio();
+  startMusic();
 }
 
 // ── Smooth Fingertip & Knife Tracking System ──
@@ -2611,6 +2945,7 @@ function runMenuAction(action) {
   if (action === 'open-store-from-over') { openStore('gameover'); return; }
   if (action === 'back') { closeStore(); return; }
   if (action === 'home') { showHome(); return; }
+  if (action === 'music') { toggleMusic(); return; }
   if (action === 'play-again') { initAudio(); startGame(); return; }
   if (action.indexOf('skin:') === 0) handleSkinAction(action.slice(5));
 }
@@ -2707,6 +3042,12 @@ function updateMenuInfo() {
   homeCoinsEl.textContent = profile.coins;
   storeCoinsEl.textContent = profile.coins;
   equippedNameEl.textContent = currentSkin.name;
+
+  // The blade streaks in the menu background are lit by the equipped blade.
+  const glow = currentSkin.glow;
+  if (homeMenuBg) homeMenuBg.style.setProperty('--slash', glow);
+  if (storeMenuBg) storeMenuBg.style.setProperty('--slash', glow);
+
   if (!homeScreen.classList.contains('hidden')) paintSkinPreview(knifePreview, currentSkin);
 }
 
@@ -2857,6 +3198,17 @@ storeOpenBtn.addEventListener('click', () => { openStore('home'); });
 goStoreBtn.addEventListener('click', () => { openStore('gameover'); });
 goHomeBtn.addEventListener('click', () => { showHome(); });
 storeBackBtn.addEventListener('click', () => { closeStore(); });
+
+musicBtns.forEach((btn) => btn.addEventListener('click', toggleMusic));
+updateMusicButtons();
+
+// Audio may only start after a real gesture, so the first one unlocks the loop.
+window.addEventListener('pointerdown', unlockMusic, { passive: true });
+window.addEventListener('keydown', unlockMusic);
+window.addEventListener('keydown', (event) => {
+  if (event.key.toLowerCase() === 'm' && !event.repeat &&
+      !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) toggleMusic();
+});
 
 // Cards are one big target so a fingertip (or thumb) does not have to hit the label.
 skinGrid.addEventListener('click', (event) => {
