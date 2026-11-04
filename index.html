@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>🍉 Air Slasher — Fingertip Katana v3.2</title>
+  <title>🍉 Air Slasher — Fingertip Katana v3.3</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -371,6 +371,39 @@
     .icon-btn:hover { background: rgba(255, 255, 255, 0.16); transform: translateY(-1px); }
     .icon-btn:active { transform: translateY(0); }
     .icon-btn.off { opacity: 0.45; }
+
+    .theme-btn {
+      height: 38px;
+      padding: 0 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-radius: 999px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.1px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      color: #e6ecff;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      cursor: pointer;
+      transition: background 0.18s ease, transform 0.18s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .theme-btn::before {
+      content: '';
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #7cf0c6;
+      box-shadow: 0 0 8px #7cf0c6;
+    }
+
+    .theme-btn[data-theme="skyline"]::before { background: #ffcf5c; box-shadow: 0 0 8px #ffcf5c; }
+    .theme-btn:hover { background: rgba(255, 255, 255, 0.14); transform: translateY(-1px); }
+    .theme-btn:active { transform: translateY(0); }
 
     .top-right { display: flex; align-items: center; gap: 8px; }
 
@@ -911,7 +944,7 @@
   </div>
 
   <div id="combo-display"></div>
-  <div id="version-badge">🗡️ v3.2 · 60 FPS Fingertip Tracking</div>
+  <div id="version-badge">🗡️ v3.3 · 60 FPS Fingertip Tracking</div>
   <div id="perf"></div>
 
   <!-- Home / Main Menu -->
@@ -938,6 +971,7 @@
     </div>
 
     <div class="home-top">
+      <button class="theme-btn" data-hover="theme" aria-label="Switch theme">Neon Rush</button>
       <button class="icon-btn music-toggle" data-hover="music" aria-label="Toggle music">🎵</button>
       <div class="coin-pill">🪙 <span id="home-coins">0</span></div>
     </div>
@@ -1012,7 +1046,7 @@
 // ════════════════════════════════════════════════
 // Shown in the corner badge and in the console, so it is always obvious which build a
 // browser is really running (a cached GitHub Pages copy is otherwise hard to spot).
-const APP_VERSION = 'v3.2';
+const APP_VERSION = 'v3.3';
 
 const CONFIG = {
   maxLives: 3,
@@ -1153,7 +1187,7 @@ const SKINS = [
 
 // ── Player profile: coins earned from score, blades owned, blade equipped ──
 const SAVE_KEY = 'airslasher_save_v1';
-const profile = { coins: 0, owned: ['classic'], equipped: 'classic', music: true };
+const profile = { coins: 0, owned: ['classic'], equipped: 'classic', music: true, theme: 'neon' };
 let currentSkin = SKINS[0];
 
 function loadProfile() {
@@ -1170,6 +1204,7 @@ function loadProfile() {
       ? saved.equipped
       : 'classic';
     profile.music = saved.music !== false;
+    profile.theme = typeof saved.theme === 'string' ? saved.theme : 'neon';
   } catch (error) {
     console.warn('Could not read the saved blades:', error);
   }
@@ -1214,6 +1249,7 @@ const coinEarnEl  = document.getElementById('coin-earn');
 const homeMenuBg  = homeScreen.querySelector('.menu-bg');
 const storeMenuBg = storeScreen.querySelector('.menu-bg');
 const musicBtns   = document.querySelectorAll('.music-toggle');
+const themeBtns   = document.querySelectorAll('.theme-btn');
 const storeToast  = document.getElementById('store-toast');
 const restartBtn  = document.getElementById('restart-btn');
 const finalScoreE = document.getElementById('final-score');
@@ -1344,34 +1380,65 @@ const MUSIC = {
 
 const musicHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 
-// C · G · Am · F · C · G · F · G — the friendliest four chords in pop.
-const PROGRESSION = [
-  { root: 48, chord: [60, 64, 67] },
-  { root: 43, chord: [59, 62, 67] },
-  { root: 45, chord: [57, 60, 64] },
-  { root: 41, chord: [57, 60, 65] },
-  { root: 48, chord: [60, 64, 67] },
-  { root: 43, chord: [59, 62, 67] },
-  { root: 41, chord: [57, 60, 65] },
-  { root: 43, chord: [59, 62, 67] }
+// Two arrangements of the same idea, so they can be compared side by side:
+//   A · Neon Rush — C major, 128 BPM, the bouncy one (C · G · Am · F)
+//   B · Skyline   — A major, 140 BPM, brighter, a fourth higher and faster (A · E · F#m · D)
+const THEMES = [
+  {
+    id: 'neon',
+    name: 'Neon Rush',
+    bpm: 128,
+    progression: [
+      { root: 48, chord: [60, 64, 67] },
+      { root: 43, chord: [59, 62, 67] },
+      { root: 45, chord: [57, 60, 64] },
+      { root: 41, chord: [57, 60, 65] },
+      { root: 48, chord: [60, 64, 67] },
+      { root: 43, chord: [59, 62, 67] },
+      { root: 41, chord: [57, 60, 65] },
+      { root: 43, chord: [59, 62, 67] }
+    ],
+    melody: [
+      [[0, 67, 2], [2, 69, 1], [3, 67, 1], [4, 64, 2], [6, 67, 2], [8, 72, 3], [12, 71, 1], [13, 69, 1], [14, 67, 2]],
+      [[0, 74, 2], [2, 71, 2], [4, 67, 2], [6, 69, 2], [8, 71, 3], [12, 72, 1], [13, 74, 1], [14, 76, 2]],
+      [[0, 76, 2], [2, 72, 2], [4, 69, 2], [6, 72, 2], [8, 76, 4], [12, 74, 2], [14, 72, 2]],
+      [[0, 69, 2], [2, 72, 2], [4, 77, 3], [8, 76, 2], [10, 74, 2], [12, 72, 4]],
+      [[0, 67, 2], [2, 69, 1], [3, 67, 1], [4, 64, 2], [6, 67, 2], [8, 72, 2], [10, 74, 2], [12, 76, 4]],
+      [[0, 74, 2], [2, 71, 2], [4, 67, 2], [6, 71, 2], [8, 74, 4], [12, 79, 4]],
+      [[0, 77, 2], [2, 76, 2], [4, 72, 2], [6, 69, 2], [8, 72, 4], [12, 77, 4]],
+      [[0, 76, 2], [2, 74, 2], [4, 71, 2], [6, 74, 2], [8, 79, 6]]
+    ]
+  },
+  {
+    id: 'skyline',
+    name: 'Skyline',
+    bpm: 140,
+    progression: [
+      { root: 45, chord: [57, 61, 64] },
+      { root: 40, chord: [56, 59, 64] },
+      { root: 42, chord: [54, 57, 61] },
+      { root: 38, chord: [50, 54, 57] },
+      { root: 45, chord: [57, 61, 64] },
+      { root: 40, chord: [56, 59, 64] },
+      { root: 38, chord: [50, 54, 57] },
+      { root: 40, chord: [56, 59, 64] }
+    ],
+    melody: [
+      [[0, 76, 2], [2, 78, 1], [3, 76, 1], [4, 73, 2], [6, 76, 2], [8, 81, 3], [12, 80, 1], [13, 78, 1], [14, 76, 2]],
+      [[0, 78, 2], [2, 76, 2], [4, 71, 2], [6, 73, 2], [8, 76, 3], [12, 78, 1], [13, 80, 1], [14, 81, 2]],
+      [[0, 81, 2], [2, 78, 2], [4, 73, 2], [6, 78, 2], [8, 81, 4], [12, 80, 2], [14, 78, 2]],
+      [[0, 74, 2], [2, 78, 2], [4, 81, 3], [8, 80, 2], [10, 78, 2], [12, 74, 4]],
+      [[0, 76, 2], [2, 78, 1], [3, 76, 1], [4, 73, 2], [6, 76, 2], [8, 81, 2], [10, 80, 2], [12, 81, 4]],
+      [[0, 80, 2], [2, 76, 2], [4, 71, 2], [6, 76, 2], [8, 80, 4], [12, 81, 4]],
+      [[0, 81, 2], [2, 78, 2], [4, 74, 2], [6, 78, 2], [8, 81, 3], [11, 78, 1], [12, 81, 4]],
+      [[0, 80, 2], [2, 78, 2], [4, 76, 2], [6, 71, 2], [8, 76, 6]]
+    ]
+  }
 ];
 
-// The hook, written as [16th step in the bar, midi note, length in 16ths].
-// Bars 1–4 state it, bars 5–8 answer it and lift an octave at the end.
-const MELODY = [
-  [[0, 67, 2], [2, 69, 1], [3, 67, 1], [4, 64, 2], [6, 67, 2], [8, 72, 3], [12, 71, 1], [13, 69, 1], [14, 67, 2]],
-  [[0, 74, 2], [2, 71, 2], [4, 67, 2], [6, 69, 2], [8, 71, 3], [12, 72, 1], [13, 74, 1], [14, 76, 2]],
-  [[0, 76, 2], [2, 72, 2], [4, 69, 2], [6, 72, 2], [8, 76, 4], [12, 74, 2], [14, 72, 2]],
-  [[0, 69, 2], [2, 72, 2], [4, 77, 3], [8, 76, 2], [10, 74, 2], [12, 72, 4]],
-  [[0, 67, 2], [2, 69, 1], [3, 67, 1], [4, 64, 2], [6, 67, 2], [8, 72, 2], [10, 74, 2], [12, 76, 4]],
-  [[0, 74, 2], [2, 71, 2], [4, 67, 2], [6, 71, 2], [8, 74, 4], [12, 79, 4]],
-  [[0, 77, 2], [2, 76, 2], [4, 72, 2], [6, 69, 2], [8, 72, 4], [12, 77, 4]],
-  [[0, 76, 2], [2, 74, 2], [4, 71, 2], [6, 74, 2], [8, 79, 6]]
-];
-
-const MELODY_STEPS = (() => {
+function buildMelodySteps(melody) {
   const map = new Map();
-  MELODY.forEach((barNotes, bar) => {
+  melody.forEach((barNotes, bar) => {
     barNotes.forEach(([stepInBar, midi, length]) => {
       const step = bar * 16 + stepInBar;
       if (!map.has(step)) map.set(step, []);
@@ -1379,7 +1446,24 @@ const MELODY_STEPS = (() => {
     });
   });
   return map;
-})();
+}
+
+let themeIndex = 0;
+let PROGRESSION = THEMES[0].progression;
+let MELODY = THEMES[0].melody;
+let MELODY_STEPS = buildMelodySteps(MELODY);
+
+function applyTheme(index) {
+  themeIndex = ((index % THEMES.length) + THEMES.length) % THEMES.length;
+  const theme = THEMES[themeIndex];
+  MUSIC.bpm = theme.bpm;
+  MUSIC.loopSteps = theme.melody.length * 16;
+  PROGRESSION = theme.progression;
+  MELODY = theme.melody;
+  MELODY_STEPS = buildMelodySteps(theme.melody);
+  profile.theme = theme.id;
+  updateThemeButtons();
+}
 
 let musicBus = null;
 let musicSend = null;
@@ -1643,6 +1727,33 @@ function updateMusicButtons() {
     btn.classList.toggle('off', !on);
     btn.setAttribute('aria-label', on ? 'Music on — tap to mute' : 'Music off — tap to play');
   });
+}
+
+function updateThemeButtons() {
+  const theme = THEMES[themeIndex];
+  themeBtns.forEach((btn) => {
+    btn.textContent = theme.name;
+    btn.dataset.theme = theme.id;
+    btn.setAttribute('title', `Theme ${theme.name} — ${theme.bpm} BPM · tap to switch`);
+    btn.setAttribute('aria-label', `Music theme: ${theme.name}. Tap to switch`);
+  });
+}
+
+// Switching restarts the loop from bar one so the two arrangements can be
+// compared without waiting for the old one to finish.
+let themeRestartTimer = null;
+function cycleTheme() {
+  stopMusic();
+  applyTheme(themeIndex + 1);
+  saveProfile();
+  // Start again as long as music is enabled, not just if it was already going:
+  // the switch may itself be the gesture that unlocks audio.
+  if (profile.music) {
+    clearTimeout(themeRestartTimer);
+    themeRestartTimer = setTimeout(() => {
+      if (profile.music) startMusic();
+    }, 320);
+  }
 }
 
 function toggleMusic() {
@@ -3041,6 +3152,7 @@ function runMenuAction(action) {
   if (action === 'back') { closeStore(); return; }
   if (action === 'home') { showHome(); return; }
   if (action === 'music') { toggleMusic(); return; }
+  if (action === 'theme') { cycleTheme(); return; }
   if (action === 'play-again') { initAudio(); startGame(); return; }
   if (action.indexOf('skin:') === 0) handleSkinAction(action.slice(5));
 }
@@ -3295,14 +3407,18 @@ goHomeBtn.addEventListener('click', () => { showHome(); });
 storeBackBtn.addEventListener('click', () => { closeStore(); });
 
 musicBtns.forEach((btn) => btn.addEventListener('click', toggleMusic));
+themeBtns.forEach((btn) => btn.addEventListener('click', cycleTheme));
 updateMusicButtons();
+applyTheme(Math.max(0, THEMES.findIndex((t) => t.id === profile.theme)));
 
 // Audio may only start after a real gesture, so the first one unlocks the loop.
 window.addEventListener('pointerdown', unlockMusic, { passive: true });
 window.addEventListener('keydown', unlockMusic);
 window.addEventListener('keydown', (event) => {
-  if (event.key.toLowerCase() === 'm' && !event.repeat &&
-      !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) toggleMusic();
+  const key = event.key.toLowerCase();
+  const typing = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+  if (key === 'm' && !event.repeat && !typing) toggleMusic();
+  if (key === 't' && !event.repeat && !typing) cycleTheme();
 });
 
 // Cards are one big target so a fingertip (or thumb) does not have to hit the label.
