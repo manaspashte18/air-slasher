@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>🍉 Air Slasher — Fingertip Katana v2.9</title>
+  <title>🍉 Air Slasher — Fingertip Katana v3.0</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -243,6 +243,432 @@
       opacity: 0.5;
     }
 
+    /* ══════════════════════════════════════════════════════════════════════
+       HOME SCREEN + BLADE STORE
+       Two full-screen menus above the camera feed. All layout is plain DOM so
+       it stays crisp and clickable, except the blade previews, which are drawn
+       by the very same drawKnife() the game uses — a skin can never look
+       different in the store than it does in your hand.
+       ══════════════════════════════════════════════════════════════════════ */
+    .home-screen,
+    .store-screen {
+      z-index: 12;
+      background: radial-gradient(125% 95% at 50% -12%, #241543 0%, #150d28 36%, #08080f 72%, #04040a 100%);
+    }
+
+    .menu-bg {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(58px);
+      opacity: 0.5;
+      will-change: transform;
+    }
+
+    .orb-a {
+      width: 46vmax; height: 46vmax;
+      left: -16vmax; top: -18vmax;
+      background: radial-gradient(circle, #ff416c, transparent 66%);
+      animation: orbDrift 18s ease-in-out infinite alternate;
+    }
+
+    .orb-b {
+      width: 42vmax; height: 42vmax;
+      right: -14vmax; bottom: -20vmax;
+      background: radial-gradient(circle, #4d96ff, transparent 66%);
+      animation: orbDrift 23s ease-in-out infinite alternate-reverse;
+    }
+
+    @keyframes orbDrift {
+      from { transform: translate3d(0, 0, 0) scale(1); }
+      to   { transform: translate3d(4vmax, 3vmax, 0) scale(1.14); }
+    }
+
+    .grid-floor {
+      position: absolute;
+      left: -30%; right: -30%; bottom: -8%;
+      height: 62%;
+      background-image:
+        linear-gradient(rgba(120, 160, 255, 0.22) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(120, 160, 255, 0.22) 1px, transparent 1px);
+      background-size: 64px 64px;
+      transform: perspective(420px) rotateX(70deg);
+      -webkit-mask-image: linear-gradient(transparent, #000 58%);
+      mask-image: linear-gradient(transparent, #000 58%);
+      opacity: 0.45;
+      animation: floorScroll 7s linear infinite;
+    }
+
+    @keyframes floorScroll {
+      to { background-position: 0 64px, 0 0; }
+    }
+
+    .fruit-rain span {
+      position: absolute;
+      bottom: -60px;
+      font-size: 30px;
+      opacity: 0;
+      animation: fruitFloat 13s linear infinite;
+    }
+
+    @keyframes fruitFloat {
+      0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
+      12%  { opacity: 0.28; }
+      85%  { opacity: 0.18; }
+      100% { transform: translateY(-92vh) rotate(210deg); opacity: 0; }
+    }
+
+    .home-top {
+      position: absolute;
+      top: calc(16px + env(safe-area-inset-top));
+      right: calc(18px + env(safe-area-inset-right));
+      z-index: 4;
+      display: flex;
+      gap: 10px;
+    }
+
+    .coin-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 15px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #ffe066;
+      background: linear-gradient(180deg, rgba(255, 205, 60, 0.2), rgba(255, 140, 0, 0.1));
+      border: 1px solid rgba(255, 205, 60, 0.45);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+      white-space: nowrap;
+    }
+
+    .home-content {
+      position: relative;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 20px 18px;
+    }
+
+    .brand-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #a8bbff;
+      padding: 5px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(120, 150, 255, 0.35);
+      background: rgba(80, 110, 255, 0.12);
+    }
+
+    #home-screen h1 {
+      margin: 2px 0 0;
+      font-size: clamp(40px, 7.6vw, 86px);
+      font-weight: 900;
+      line-height: 0.96;
+      letter-spacing: 3px;
+      background: linear-gradient(180deg, #ffffff 0%, #ffe9a8 36%, #ffb03a 64%, #ff4d6d 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 8px 34px rgba(255, 90, 120, 0.5));
+    }
+
+    #home-screen h1 span {
+      background: linear-gradient(180deg, #ffffff 0%, #9be7ff 40%, #4d96ff 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    #home-screen .subtitle {
+      margin-bottom: 2px;
+      font-size: 16px;
+      max-width: 460px;
+    }
+
+    .loadout {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    #knife-preview {
+      display: block;
+      width: 280px;
+      height: 112px;
+      filter: drop-shadow(0 12px 26px rgba(0, 0, 0, 0.55));
+      animation: bladeFloat 3.8s ease-in-out infinite;
+    }
+
+    @keyframes bladeFloat {
+      0%, 100% { transform: translateY(0) rotate(-2deg); }
+      50%      { transform: translateY(-7px) rotate(2deg); }
+    }
+
+    .loadout-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.5px;
+    }
+
+    .loadout-name .label {
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: #8fa0c8;
+    }
+
+    .overlay .btn {
+      pointer-events: auto;
+      cursor: pointer;
+      border: none;
+      border-radius: 16px;
+      padding: 16px 46px;
+      font-size: 21px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: #fff;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+    }
+
+    .overlay .btn:hover { transform: translateY(-2px) scale(1.03); }
+    .overlay .btn:active { transform: translateY(0) scale(0.99); }
+
+    .menu-actions {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 8px;
+    }
+
+    .btn-play {
+      min-width: 190px;
+      background: linear-gradient(135deg, #ff416c, #ff8a00);
+      box-shadow: 0 12px 34px rgba(255, 65, 108, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    }
+
+    .btn-play:hover {
+      box-shadow: 0 16px 44px rgba(255, 65, 108, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    }
+
+    .btn-store {
+      min-width: 190px;
+      background: linear-gradient(160deg, rgba(58, 72, 116, 0.95), rgba(18, 22, 38, 0.95));
+      border: 1px solid rgba(120, 170, 255, 0.45);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    }
+
+    .btn-store:hover {
+      border-color: rgba(160, 200, 255, 0.8);
+      box-shadow: 0 16px 40px rgba(80, 130, 255, 0.4);
+    }
+
+    .hover-hint {
+      margin-top: 2px;
+      font-size: 13px;
+      letter-spacing: 0.4px;
+      color: rgba(190, 205, 235, 0.6);
+    }
+
+    /* ── Store ── */
+    .store-screen {
+      justify-content: flex-start;
+      overflow-y: auto;
+      overflow-x: hidden;
+      touch-action: pan-y;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .store-top {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: calc(12px + env(safe-area-inset-top)) 18px 12px;
+      background: linear-gradient(180deg, rgba(8, 8, 16, 0.97), rgba(8, 8, 16, 0.75) 72%, rgba(8, 8, 16, 0));
+    }
+
+    .btn-ghost {
+      border-radius: 12px;
+      padding: 9px 18px;
+      font-size: 14px;
+      letter-spacing: 1px;
+      color: #dfe6ff;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: none;
+    }
+
+    .store-title {
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 4px;
+      color: #fff;
+      text-shadow: 0 0 24px rgba(120, 150, 255, 0.55);
+    }
+
+    .store-title span { color: #ffd93d; }
+
+    .skin-grid {
+      width: min(980px, 94vw);
+      margin: 4px auto 0;
+      padding: 10px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+      gap: 12px;
+    }
+
+    .skin-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 10px 10px 12px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(34, 40, 66, 0.88), rgba(12, 15, 26, 0.92));
+      border: 1px solid rgba(120, 170, 255, 0.16);
+      cursor: pointer;
+      pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .skin-card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(140, 180, 255, 0.5);
+    }
+
+    .skin-card canvas {
+      display: block;
+      width: 100%;
+      height: 76px;
+    }
+
+    .skin-name {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+      color: #fff;
+      text-align: center;
+    }
+
+    .skin-tag {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(150, 170, 220, 0.75);
+    }
+
+    .skin-action {
+      margin-top: 4px;
+      width: 100%;
+      padding: 7px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      text-align: center;
+      color: #eaf0ff;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .skin-card.locked .skin-action {
+      color: #ffd76a;
+      background: linear-gradient(135deg, rgba(255, 180, 0, 0.18), rgba(255, 90, 0, 0.12));
+      border-color: rgba(255, 200, 80, 0.35);
+    }
+
+    .skin-card.owned { border-color: rgba(90, 220, 150, 0.45); }
+
+    .skin-card.owned .skin-action {
+      color: #9dffc8;
+      background: linear-gradient(135deg, rgba(40, 220, 140, 0.22), rgba(0, 150, 110, 0.16));
+      border-color: rgba(80, 230, 160, 0.45);
+    }
+
+    .skin-card.equipped {
+      border-color: rgba(255, 217, 61, 0.85);
+      box-shadow: 0 0 0 1px rgba(255, 217, 61, 0.35), 0 12px 34px rgba(255, 190, 40, 0.18);
+    }
+
+    .skin-card.equipped .skin-action {
+      color: #2a1c00;
+      background: linear-gradient(135deg, #ffd93d, #ffa200);
+      border-color: transparent;
+    }
+
+    .store-foot {
+      padding: 12px 16px calc(18px + env(safe-area-inset-bottom));
+      font-size: 12px;
+      letter-spacing: 0.3px;
+      color: rgba(180, 195, 225, 0.55);
+    }
+
+    .store-toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(26px + env(safe-area-inset-bottom));
+      transform: translate(-50%, 14px);
+      z-index: 120;
+      max-width: 88vw;
+      padding: 10px 20px;
+      border-radius: 999px;
+      background: rgba(12, 16, 28, 0.95);
+      border: 1px solid rgba(255, 217, 61, 0.45);
+      color: #ffe9a8;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
+
+    .store-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    #game-over-overlay .go-actions {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    #game-over-overlay .coin-earn {
+      margin-bottom: 20px;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: #ffe066;
+      text-shadow: 0 0 18px rgba(255, 200, 50, 0.45);
+    }
+
     /* ── Phones & small screens ────────────────────────────────────────────────
        All sizes above are tuned for a desktop play area. On a phone those same
        pixel values eat the whole screen: "🍉 Air Slasher" at 56px is wider than
@@ -335,6 +761,39 @@
         bottom: calc(6px + env(safe-area-inset-bottom));
         left: calc(8px + env(safe-area-inset-left));
       }
+
+      /* Menus */
+      .home-content { gap: 8px; padding: 10px 12px; }
+      .brand-badge { font-size: 8px; letter-spacing: 2.5px; padding: 4px 10px; }
+      #home-screen h1 { font-size: 40px; letter-spacing: 1.5px; }
+      #home-screen .subtitle { font-size: 12.5px; margin-bottom: 0; max-width: 88vw; }
+      #knife-preview { width: 200px; height: 84px; }
+      .loadout-name { font-size: 12px; gap: 6px; }
+      .loadout-name .label { font-size: 8px; }
+      .coin-pill { font-size: 12px; padding: 5px 11px; }
+      .home-top { top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); }
+      .overlay .btn { font-size: 16px; padding: 12px 26px; border-radius: 14px; }
+      .menu-actions { gap: 10px; margin-top: 4px; }
+      .btn-play, .btn-store { min-width: 0; width: 100%; max-width: 300px; }
+      .hover-hint { font-size: 11px; }
+
+      .store-top { padding: calc(8px + env(safe-area-inset-top)) 10px 8px; gap: 8px; }
+      .store-title { font-size: 15px; letter-spacing: 2px; }
+      .btn-ghost { font-size: 12px; padding: 7px 13px; }
+      .skin-grid {
+        width: 100%;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        padding: 8px;
+      }
+      .skin-card { padding: 7px 7px 9px; border-radius: 12px; }
+      .skin-card canvas { height: 52px; }
+      .skin-name { font-size: 11.5px; }
+      .skin-tag { font-size: 8px; letter-spacing: 1.5px; }
+      .skin-action { font-size: 10.5px; padding: 6px 4px; }
+      .store-foot { font-size: 10.5px; }
+      #game-over-overlay .coin-earn { font-size: 13px; margin-bottom: 14px; }
+      #game-over-overlay .go-actions { gap: 8px; }
     }
 
     /* Landscape phones: very little vertical room, so drop the subtitle entirely. */
@@ -346,6 +805,18 @@
       #game-over-overlay .final-score { font-size: 32px; }
       #game-over-overlay .stats { margin-bottom: 14px; }
       .gesture-hint { font-size: 11px; margin-top: 8px; }
+
+      .home-content { gap: 6px; padding: 6px; }
+      .brand-badge { display: none; }
+      #home-screen h1 { font-size: 28px; }
+      #knife-preview { width: 150px; height: 56px; }
+      .loadout-name { font-size: 11px; }
+      .menu-actions { flex-direction: row; gap: 8px; }
+      .btn-play, .btn-store { width: auto; max-width: none; font-size: 14px; padding: 9px 22px; }
+      .hover-hint { display: none; }
+      .skin-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .skin-card canvas { height: 40px; }
+      #game-over-overlay .coin-earn { margin-bottom: 10px; }
     }
   </style>
 </head>
@@ -371,16 +842,61 @@
   </div>
 
   <div id="combo-display"></div>
-  <div id="version-badge">🗡️ v2.9 · 60 FPS Fingertip Tracking</div>
+  <div id="version-badge">🗡️ v3.0 · 60 FPS Fingertip Tracking</div>
   <div id="perf"></div>
 
-  <!-- Start Overlay -->
-  <div id="start-overlay" class="overlay">
-    <h1>🍉 Air Slasher</h1>
-    <p class="subtitle">Slice flying fruits with your hand!<br>Avoid the 💣 bombs or lose a life.</p>
-    <button id="start-btn">▶ START GAME</button>
-    <div class="spinner" style="display:none" id="load-spinner"></div>
-    <div id="loading-text"></div>
+  <!-- Home / Main Menu -->
+  <div id="home-screen" class="overlay home-screen">
+    <div class="menu-bg" aria-hidden="true">
+      <div class="orb orb-a"></div>
+      <div class="orb orb-b"></div>
+      <div class="grid-floor"></div>
+      <div class="fruit-rain">
+        <span style="left:6%;  animation-delay:0s;   font-size:34px;">🍉</span>
+        <span style="left:19%; animation-delay:2.6s;">🍊</span>
+        <span style="left:33%; animation-delay:5.2s; font-size:26px;">🍋</span>
+        <span style="left:47%; animation-delay:1.4s;">🥝</span>
+        <span style="left:61%; animation-delay:3.8s; font-size:36px;">🍇</span>
+        <span style="left:74%; animation-delay:6.6s;">🍑</span>
+        <span style="left:87%; animation-delay:1.9s; font-size:28px;">🫐</span>
+      </div>
+    </div>
+
+    <div class="home-top">
+      <div class="coin-pill">🪙 <span id="home-coins">0</span></div>
+    </div>
+
+    <div class="home-content">
+      <span class="brand-badge">Fingertip Katana</span>
+      <h1>AIR <span>SLASHER</span></h1>
+      <p class="subtitle">Slice flying fruit with your hand and dodge the 💣 bombs.</p>
+
+      <div class="loadout">
+        <canvas id="knife-preview"></canvas>
+        <div class="loadout-name"><span class="label">EQUIPPED</span><span id="equipped-name">Golden Katana</span></div>
+      </div>
+
+      <div class="menu-actions">
+        <button id="play-btn" class="btn btn-play" data-hover="play">▶ PLAY</button>
+        <button id="store-open-btn" class="btn btn-store" data-hover="open-store">🗡️ STORE</button>
+      </div>
+
+      <div class="hover-hint">✋ Point at a button and hold — or tap it</div>
+      <div class="spinner" style="display:none" id="load-spinner"></div>
+      <div id="loading-text"></div>
+    </div>
+  </div>
+
+  <!-- Blade Store -->
+  <div id="store-screen" class="overlay store-screen hidden">
+    <div class="store-top">
+      <button id="store-back" class="btn btn-ghost" data-hover="back">← BACK</button>
+      <div class="store-title">BLADE <span>STORE</span></div>
+      <div class="coin-pill">🪙 <span id="store-coins">0</span></div>
+    </div>
+    <div class="skin-grid" id="skin-grid"></div>
+    <div class="store-foot">Every point you score earns 1 🪙 · your blades are saved on this device</div>
+    <div id="store-toast" class="store-toast"></div>
   </div>
 
   <!-- Game Over Overlay -->
@@ -388,8 +904,13 @@
     <h1>Game Over</h1>
     <div class="final-score" id="final-score">0</div>
     <div class="stats" id="final-stats"></div>
-    <button id="restart-btn">🔄 Play Again</button>
-    <div class="gesture-hint">✋ Hold hand over button (or swipe it) to restart</div>
+    <div class="coin-earn" id="coin-earn">+0 🪙 earned</div>
+    <div class="go-actions">
+      <button id="restart-btn" class="btn btn-play" data-hover="play-again">🔄 PLAY AGAIN</button>
+      <button id="go-store-btn" class="btn btn-store" data-hover="open-store-from-over">🗡️ STORE</button>
+      <button id="go-home-btn" class="btn btn-ghost" data-hover="home">🏠 HOME</button>
+    </div>
+    <div class="gesture-hint">✋ Point at a button and hold to choose — or tap it</div>
   </div>
 </div>
 
@@ -403,7 +924,7 @@
 // ════════════════════════════════════════════════
 // Shown in the corner badge and in the console, so it is always obvious which build a
 // browser is really running (a cached GitHub Pages copy is otherwise hard to spot).
-const APP_VERSION = 'v2.9';
+const APP_VERSION = 'v3.0';
 
 const CONFIG = {
   maxLives: 3,
@@ -435,6 +956,148 @@ const FRUIT_TYPES = [
 const BOMB = { emoji: '💣', color: '#2d3436', juice: '#636e72', name: 'Bomb' };
 
 // ════════════════════════════════════════════════
+//  BLADE SKINS
+//  Every blade is pure geometry + colour stops, so skins cost nothing at runtime
+//  and the same drawKnife() paints the in-game katana, the menu preview and the
+//  store cards. `glow` is a bare "r,g,b" triplet used inside rgba().
+// ════════════════════════════════════════════════
+const SKINS = [
+  {
+    id: 'classic', name: 'Golden Katana', tag: 'Starter', price: 0,
+    blade: ['#64748b', '#cbd5e1', '#ffffff', '#cbd5e1', '#64748b'],
+    edge: 'rgba(255,255,255,0.6)', ridge: 'rgba(255,255,255,0.75)',
+    guard: ['#8B6914', '#ffd700', '#fff5c0', '#ffd700', '#8B6914'],
+    guardStroke: '#5a3e05', guardInner: 'rgba(255,215,0,0.5)',
+    grip: ['#0d0d1a', '#2a2a44', '#2a2a44', '#0d0d1a'], wrap: 'rgba(255,215,0,0.45)',
+    pommel: '#daa520', pommelStroke: '#6B4F0A',
+    glow: '255,215,0',
+    trailAura: 'rgba(255,215,0,0.32)', trailCore: '#fffbf0', trailGlow: '#ffd000'
+  },
+  {
+    id: 'ember', name: 'Ember Fang', tag: 'Inferno', price: 250,
+    blade: ['#4a1010', '#c2410c', '#fed7aa', '#c2410c', '#4a1010'],
+    edge: 'rgba(255,200,150,0.65)', ridge: 'rgba(255,235,210,0.8)',
+    guard: ['#3b0606', '#ff5722', '#ffe0b2', '#ff5722', '#3b0606'],
+    guardStroke: '#2a0404', guardInner: 'rgba(255,120,60,0.45)',
+    grip: ['#160505', '#33100b', '#33100b', '#160505'], wrap: 'rgba(255,120,60,0.5)',
+    pommel: '#ff5722', pommelStroke: '#5a1a05',
+    glow: '255,110,40',
+    trailAura: 'rgba(255,90,30,0.34)', trailCore: '#fff1e0', trailGlow: '#ff6b2b'
+  },
+  {
+    id: 'frost', name: 'Frost Bite', tag: 'Glacier', price: 500,
+    blade: ['#1e3a5f', '#7dd3fc', '#f0fbff', '#7dd3fc', '#1e3a5f'],
+    edge: 'rgba(220,245,255,0.7)', ridge: 'rgba(255,255,255,0.85)',
+    guard: ['#0e3150', '#38bdf8', '#e0f7ff', '#38bdf8', '#0e3150'],
+    guardStroke: '#082238', guardInner: 'rgba(120,220,255,0.5)',
+    grip: ['#04121f', '#0d2b45', '#0d2b45', '#04121f'], wrap: 'rgba(140,230,255,0.5)',
+    pommel: '#7dd3fc', pommelStroke: '#0b3a5c',
+    glow: '120,220,255',
+    trailAura: 'rgba(140,225,255,0.32)', trailCore: '#ffffff', trailGlow: '#7de3ff'
+  },
+  {
+    id: 'neon', name: 'Neon Pulse', tag: 'Synthwave', price: 800,
+    blade: ['#2b0a4a', '#a855f7', '#e9d5ff', '#22d3ee', '#2b0a4a'],
+    edge: 'rgba(235,180,255,0.7)', ridge: 'rgba(255,255,255,0.9)',
+    guard: ['#1a0a2e', '#22d3ee', '#e0fdff', '#22d3ee', '#1a0a2e'],
+    guardStroke: '#0d0418', guardInner: 'rgba(34,211,238,0.5)',
+    grip: ['#0b0418', '#241141', '#241141', '#0b0418'], wrap: 'rgba(168,85,247,0.6)',
+    pommel: '#22d3ee', pommelStroke: '#0a2a33',
+    glow: '190,110,255',
+    trailAura: 'rgba(200,110,255,0.34)', trailCore: '#f4e6ff', trailGlow: '#c56bff'
+  },
+  {
+    id: 'shadow', name: 'Shadow Reaper', tag: 'Cursed', price: 1200,
+    blade: ['#0a0a12', '#3f3f5e', '#b9b9d6', '#3f3f5e', '#0a0a12'],
+    edge: 'rgba(190,180,255,0.55)', ridge: 'rgba(220,210,255,0.7)',
+    guard: ['#08080f', '#6d28d9', '#c4b5fd', '#6d28d9', '#08080f'],
+    guardStroke: '#04040a', guardInner: 'rgba(140,110,255,0.45)',
+    grip: ['#050509', '#181828', '#181828', '#050509'], wrap: 'rgba(150,120,255,0.5)',
+    pommel: '#8b5cf6', pommelStroke: '#2a1a4d',
+    glow: '150,120,255',
+    trailAura: 'rgba(140,110,255,0.3)', trailCore: '#efeaff', trailGlow: '#9a7bff'
+  },
+  {
+    id: 'venom', name: 'Venom Edge', tag: 'Toxic', price: 1700,
+    blade: ['#0d2b1a', '#22c55e', '#d9f99d', '#22c55e', '#0d2b1a'],
+    edge: 'rgba(200,255,170,0.6)', ridge: 'rgba(240,255,220,0.8)',
+    guard: ['#0a2416', '#84cc16', '#ecfccb', '#84cc16', '#0a2416'],
+    guardStroke: '#04120a', guardInner: 'rgba(140,220,80,0.5)',
+    grip: ['#04120b', '#12301f', '#12301f', '#04120b'], wrap: 'rgba(160,230,90,0.5)',
+    pommel: '#a3e635', pommelStroke: '#2a4a12',
+    glow: '150,240,80',
+    trailAura: 'rgba(150,240,90,0.3)', trailCore: '#f4ffe0', trailGlow: '#a8ff4d'
+  },
+  {
+    id: 'sakura', name: 'Sakura Bloom', tag: 'Blossom', price: 2300,
+    blade: ['#4a1a33', '#f472b6', '#ffe4f0', '#f472b6', '#4a1a33'],
+    edge: 'rgba(255,220,240,0.7)', ridge: 'rgba(255,255,255,0.85)',
+    guard: ['#4a1030', '#fb7185', '#ffe4e6', '#fb7185', '#4a1030'],
+    guardStroke: '#2a0818', guardInner: 'rgba(255,160,200,0.5)',
+    grip: ['#1a0510', '#3a1024', '#3a1024', '#1a0510'], wrap: 'rgba(255,170,210,0.55)',
+    pommel: '#f9a8d4', pommelStroke: '#5a1a3a',
+    glow: '255,150,200',
+    trailAura: 'rgba(255,150,200,0.32)', trailCore: '#fff0f6', trailGlow: '#ff8fc4'
+  },
+  {
+    id: 'void', name: 'Void Ripper', tag: 'Cosmic', price: 3000,
+    blade: ['#05060f', '#1e1b4b', '#93c5fd', '#1e1b4b', '#05060f'],
+    edge: 'rgba(190,220,255,0.6)', ridge: 'rgba(230,240,255,0.8)',
+    guard: ['#04040c', '#3b82f6', '#dbeafe', '#3b82f6', '#04040c'],
+    guardStroke: '#02020a', guardInner: 'rgba(90,150,255,0.5)',
+    grip: ['#03030a', '#101235', '#101235', '#03030a'], wrap: 'rgba(120,160,255,0.5)',
+    pommel: '#60a5fa', pommelStroke: '#12224d',
+    glow: '110,160,255',
+    trailAura: 'rgba(110,160,255,0.32)', trailCore: '#eaf2ff', trailGlow: '#6fa8ff'
+  },
+  {
+    id: 'midas', name: 'Midas Prime', tag: 'Legendary', price: 4000,
+    blade: ['#7a4a00', '#ffd700', '#fffbe0', '#ffd700', '#7a4a00'],
+    edge: 'rgba(255,250,200,0.8)', ridge: 'rgba(255,255,240,0.9)',
+    guard: ['#6b4400', '#ffe066', '#fffdf0', '#ffe066', '#6b4400'],
+    guardStroke: '#3f2a00', guardInner: 'rgba(255,235,120,0.6)',
+    grip: ['#2a1d00', '#5a3d00', '#5a3d00', '#2a1d00'], wrap: 'rgba(255,240,150,0.7)',
+    pommel: '#ffea70', pommelStroke: '#7a5a00',
+    glow: '255,225,90',
+    trailAura: 'rgba(255,225,90,0.36)', trailCore: '#fffdf0', trailGlow: '#ffe066'
+  }
+];
+
+// ── Player profile: coins earned from score, blades owned, blade equipped ──
+const SAVE_KEY = 'airslasher_save_v1';
+const profile = { coins: 0, owned: ['classic'], equipped: 'classic' };
+let currentSkin = SKINS[0];
+
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!saved || typeof saved !== 'object') return;
+
+    profile.coins = Math.max(0, Math.floor(Number(saved.coins) || 0));
+    const owned = Array.isArray(saved.owned) ? saved.owned.filter(id => SKINS.some(s => s.id === id)) : [];
+    profile.owned = Array.from(new Set(['classic'].concat(owned)));
+    profile.equipped = SKINS.some(s => s.id === saved.equipped) && profile.owned.includes(saved.equipped)
+      ? saved.equipped
+      : 'classic';
+  } catch (error) {
+    console.warn('Could not read the saved blades:', error);
+  }
+}
+
+function saveProfile() {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(profile));
+  } catch (error) {
+    // Private mode / storage full: the game still plays, it just will not remember.
+  }
+}
+
+loadProfile();
+currentSkin = SKINS.find(s => s.id === profile.equipped) || SKINS[0];
+
+// ════════════════════════════════════════════════
 //  DOM REFS
 // ════════════════════════════════════════════════
 const video       = document.getElementById('webcam');
@@ -445,9 +1108,21 @@ const scoreEl     = document.getElementById('score-display');
 const bestEl      = document.getElementById('best-display');
 const livesEl     = document.getElementById('lives-display');
 const comboEl     = document.getElementById('combo-display');
-const startOv     = document.getElementById('start-overlay');
+const homeScreen  = document.getElementById('home-screen');
+const storeScreen = document.getElementById('store-screen');
 const gameOverOv  = document.getElementById('game-over-overlay');
-const startBtn    = document.getElementById('start-btn');
+const playBtn     = document.getElementById('play-btn');
+const storeOpenBtn = document.getElementById('store-open-btn');
+const goStoreBtn  = document.getElementById('go-store-btn');
+const goHomeBtn   = document.getElementById('go-home-btn');
+const storeBackBtn = document.getElementById('store-back');
+const skinGrid    = document.getElementById('skin-grid');
+const homeCoinsEl = document.getElementById('home-coins');
+const storeCoinsEl = document.getElementById('store-coins');
+const equippedNameEl = document.getElementById('equipped-name');
+const knifePreview = document.getElementById('knife-preview');
+const coinEarnEl  = document.getElementById('coin-earn');
+const storeToast  = document.getElementById('store-toast');
 const restartBtn  = document.getElementById('restart-btn');
 const finalScoreE = document.getElementById('final-score');
 const finalStats  = document.getElementById('final-stats');
@@ -471,7 +1146,20 @@ let totalMissed = 0;
 let gameStartTime = 0;
 let spawnTimer = 0;
 let currentSpawnInterval = CONFIG.fruitSpawnInterval;
-let holdToRestartTimer = 0;
+
+// Hand-hover selection for every menu button. Long enough to think twice, and
+// pulling the hand away cancels it faster than it fills.
+const HOVER = {
+  holdMs: 1600,   // fingertip must stay on a button this long to activate it
+  decayMs: 620,   // ...but leaving only takes this long to cancel a full hold
+  rearmMs: 420,   // ignore buttons briefly after one fires (no double triggers)
+  padPx: 8
+};
+let hoverTargets = [];
+let hoverEl = null;
+let hoverProgress = 0;
+let hoverLockUntil = 0;
+let storeReturn = 'home';
 
 // ── Web Audio Synthesizer (Instant SFX without external audio files) ──
 let audioCtx = null;
@@ -631,6 +1319,9 @@ function resizeCanvas() {
   canvas._cssWidth = cssWidth;
   canvas._cssHeight = cssHeight;
   canvas._renderScale = renderScale;
+
+  // Blade previews are painted at the real CSS size, so they need a repaint too.
+  repaintMenuPreviews();
 }
 
 
@@ -939,7 +1630,8 @@ function updateHandVelocity(now) {
 // ════════════════════════════════════════════════
 //  KNIFE DRAWING (Katana Tip Aligned Directly at Index Fingertip)
 // ════════════════════════════════════════════════
-function drawKnife(ctx, tipX, tipY, angle, speed, bLen = 110, gLen = 50) {
+function drawKnife(ctx, tipX, tipY, angle, speed, bLen = 110, gLen = 50, skin = currentSkin) {
+  const palette = skin || SKINS[0];
   ctx.save();
   ctx.translate(tipX, tipY);
   ctx.rotate(angle);
@@ -954,17 +1646,14 @@ function drawKnife(ctx, tipX, tipY, angle, speed, bLen = 110, gLen = 50) {
   // ── Blade glow (flares during fast slashes) ──
   const glowIntensity = Math.min(speed / 16, 1);
   if (glowIntensity > 0.05) {
-    ctx.shadowColor = `rgba(255, 215, 0, ${0.45 + glowIntensity * 0.55})`;
+    ctx.shadowColor = `rgba(${palette.glow}, ${0.45 + glowIntensity * 0.55})`;
     ctx.shadowBlur = 10 + glowIntensity * 24;
   }
 
   // ── Steel blade (sharp tip at (0, 0), runs down along finger to guard) ──
   const bladeGrad = ctx.createLinearGradient(-bladeW / 2, 0, bladeW / 2, 0);
-  bladeGrad.addColorStop(0, '#64748b');
-  bladeGrad.addColorStop(0.25, '#cbd5e1');
-  bladeGrad.addColorStop(0.5, '#ffffff');
-  bladeGrad.addColorStop(0.75, '#cbd5e1');
-  bladeGrad.addColorStop(1, '#64748b');
+  palette.blade.forEach((color, index) =>
+    bladeGrad.addColorStop(index / (palette.blade.length - 1), color));
   ctx.fillStyle = bladeGrad;
 
   ctx.beginPath();
@@ -976,7 +1665,7 @@ function drawKnife(ctx, tipX, tipY, angle, speed, bLen = 110, gLen = 50) {
   ctx.fill();
 
   // ── Blade edge highlight (hamon wave line) ──
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.strokeStyle = palette.edge;
   ctx.lineWidth = 1.1;
   ctx.beginPath();
   ctx.moveTo(0, 6);
@@ -987,7 +1676,7 @@ function drawKnife(ctx, tipX, tipY, angle, speed, bLen = 110, gLen = 50) {
   ctx.stroke();
 
   // ── Central ridge line (shinogi) ──
-  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.strokeStyle = palette.ridge;
   ctx.lineWidth = 1.2;
   ctx.beginPath();
   ctx.moveTo(0, 4);
@@ -998,21 +1687,21 @@ function drawKnife(ctx, tipX, tipY, angle, speed, bLen = 110, gLen = 50) {
   ctx.shadowBlur = 0;
   const tsubaY = bladeLen + 3;
   const tsubaGrad = ctx.createLinearGradient(-guardW / 2, tsubaY, guardW / 2, tsubaY);
-  tsubaGrad.addColorStop(0, '#8B6914');
-  tsubaGrad.addColorStop(0.3, '#ffd700');
-  tsubaGrad.addColorStop(0.5, '#fff5c0');
-  tsubaGrad.addColorStop(0.7, '#ffd700');
-  tsubaGrad.addColorStop(1, '#8B6914');
+  tsubaGrad.addColorStop(0, palette.guard[0]);
+  tsubaGrad.addColorStop(0.3, palette.guard[1]);
+  tsubaGrad.addColorStop(0.5, palette.guard[2]);
+  tsubaGrad.addColorStop(0.7, palette.guard[3]);
+  tsubaGrad.addColorStop(1, palette.guard[4]);
   ctx.fillStyle = tsubaGrad;
   ctx.beginPath();
   ctx.ellipse(0, tsubaY, guardW / 2, guardH / 2, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#5a3e05';
+  ctx.strokeStyle = palette.guardStroke;
   ctx.lineWidth = 1.2;
   ctx.stroke();
 
   // Tsuba inner decorative ellipse
-  ctx.strokeStyle = 'rgba(255,215,0,0.5)';
+  ctx.strokeStyle = palette.guardInner;
   ctx.lineWidth = 0.8;
   ctx.beginPath();
   ctx.ellipse(0, tsubaY, guardW / 2 - 4, guardH / 2 - 1.5, 0, 0, Math.PI * 2);
@@ -1021,15 +1710,15 @@ function drawKnife(ctx, tipX, tipY, angle, speed, bLen = 110, gLen = 50) {
   // ── Dark wrapped grip (tsuka) resting in palm ──
   const gripTop = tsubaY + 3;
   const gripGrad = ctx.createLinearGradient(-gripW / 2, 0, gripW / 2, 0);
-  gripGrad.addColorStop(0, '#0d0d1a');
-  gripGrad.addColorStop(0.3, '#2a2a44');
-  gripGrad.addColorStop(0.7, '#2a2a44');
-  gripGrad.addColorStop(1, '#0d0d1a');
+  gripGrad.addColorStop(0, palette.grip[0]);
+  gripGrad.addColorStop(0.3, palette.grip[1]);
+  gripGrad.addColorStop(0.7, palette.grip[2]);
+  gripGrad.addColorStop(1, palette.grip[3]);
   ctx.fillStyle = gripGrad;
   ctx.fillRect(-gripW / 2, gripTop, gripW, gripLen);
 
-  // Golden diamond cord wrap
-  ctx.strokeStyle = 'rgba(255,215,0,0.45)';
+  // Diamond cord wrap
+  ctx.strokeStyle = palette.wrap;
   ctx.lineWidth = 1.2;
   for (let gy = gripTop + 4; gy < gripTop + gripLen - 5; gy += 9) {
     ctx.beginPath();
@@ -1046,19 +1735,19 @@ function drawKnife(ctx, tipX, tipY, angle, speed, bLen = 110, gLen = 50) {
 
   // ── Golden pommel (kashira) near wrist ──
   const pommelY = gripTop + gripLen + 2;
-  ctx.fillStyle = '#daa520';
+  ctx.fillStyle = palette.pommel;
   ctx.beginPath();
   ctx.ellipse(0, pommelY, gripW / 2 + 2, 4, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#6B4F0A';
+  ctx.strokeStyle = palette.pommelStroke;
   ctx.lineWidth = 0.8;
   ctx.stroke();
 
   // ── Knife Tip Glint & Sparkle at (0, 0) — LOCKED TO FINGERTIP ──
   const glintGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 10);
   glintGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-  glintGrad.addColorStop(0.35, 'rgba(255, 215, 0, 0.65)');
-  glintGrad.addColorStop(1, 'rgba(255, 215, 0, 0)');
+  glintGrad.addColorStop(0.35, `rgba(${palette.glow}, 0.7)`);
+  glintGrad.addColorStop(1, `rgba(${palette.glow}, 0)`);
   ctx.fillStyle = glintGrad;
   ctx.fillRect(-10, -10, 20, 20);
 
@@ -1666,7 +2355,7 @@ function gameLoop(timestamp) {
         ctx.quadraticCurveTo(trail[i].x, trail[i].y, mx, my);
       }
       ctx.lineTo(trail[trail.length - 1].x, trail[trail.length - 1].y);
-      ctx.strokeStyle = 'rgba(255, 215, 0, 0.32)';
+      ctx.strokeStyle = currentSkin.trailAura;
       ctx.lineWidth = 22 * Math.max(0.6, viewScale);
       ctx.stroke();
 
@@ -1679,9 +2368,9 @@ function gameLoop(timestamp) {
         ctx.quadraticCurveTo(trail[i].x, trail[i].y, mx, my);
       }
       ctx.lineTo(trail[trail.length - 1].x, trail[trail.length - 1].y);
-      ctx.strokeStyle = '#fffbf0';
+      ctx.strokeStyle = currentSkin.trailCore;
       ctx.lineWidth = 8 * Math.max(0.6, viewScale);
-      ctx.shadowColor = '#ffd000';
+      ctx.shadowColor = currentSkin.trailGlow;
       ctx.shadowBlur = 10;
       ctx.stroke();
       ctx.shadowBlur = 0;
@@ -1695,76 +2384,9 @@ function gameLoop(timestamp) {
     }
   }
 
-  // ── Touchless Hand Gesture Restart ──
-  if (gameState === 'over' && !gameOverOv.classList.contains('hidden')) {
-    const btnRect = restartBtn.getBoundingClientRect();
-    if (btnRect.width > 0) {
-      const bx = btnRect.left + btnRect.width / 2;
-      const by = btnRect.top + btnRect.height / 2;
-      const ringRadius = Math.max(btnRect.width, btnRect.height) * 0.52 + 10;
-
-      let isHovering = false;
-      if (playerHand.active) {
-        // Can hover with fingertip / knife tip over the restart button
-        const distToCenter = Math.hypot(playerHand.x - bx, playerHand.y - by);
-
-        // Direct hover check: fills up smoothly when knife tip is held over button
-        if (distToCenter < ringRadius + 18) {
-          isHovering = true;
-          holdToRestartTimer += dt / 1100; // takes ~1.1s of holding to restart
-          if (holdToRestartTimer >= 1.0) {
-            holdToRestartTimer = 0;
-            playComboSound(5);
-            startGame();
-            // Do NOT return here — requestAnimationFrame must be called at bottom of gameLoop
-          }
-        } else {
-          // Swipe to restart check: instant trigger if player slashes knife tip through button
-          const swipeTip = distToSegment(bx, by, playerHand.lastX, playerHand.lastY, playerHand.x, playerHand.y);
-          const swipeSpeed = Math.hypot(playerHand.x - playerHand.lastX, playerHand.y - playerHand.lastY);
-          if (swipeSpeed > 7 && swipeTip < ringRadius + 18) {
-            holdToRestartTimer = 0;
-            playSliceSound();
-            playComboSound(4);
-            startGame();
-            // Do NOT return here — requestAnimationFrame must be called at bottom of gameLoop
-          }
-        }
-      }
-
-      if (!isHovering) {
-        holdToRestartTimer = Math.max(0, holdToRestartTimer - dt / 350);
-      }
-
-      // Draw radial target ring around button
-      ctx.save();
-      // Outer subtle guide circle
-      ctx.beginPath();
-      ctx.arc(bx, by, ringRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = isHovering ? 'rgba(255, 215, 0, 0.45)' : 'rgba(255, 255, 255, 0.2)';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      // Active filling progress arc
-      if (holdToRestartTimer > 0) {
-        ctx.beginPath();
-        ctx.arc(bx, by, ringRadius, -Math.PI / 2, -Math.PI / 2 + holdToRestartTimer * Math.PI * 2);
-        ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 7;
-        ctx.shadowColor = '#ffc107';
-        ctx.shadowBlur = 14;
-        ctx.stroke();
-
-        const pct = Math.floor(holdToRestartTimer * 100);
-        ctx.font = 'bold 15px Segoe UI, sans-serif';
-        ctx.fillStyle = '#ffea00';
-        ctx.textAlign = 'center';
-        ctx.shadowBlur = 8;
-        ctx.fillText(`${pct}%`, bx, by + ringRadius + 24);
-      }
-      ctx.restore();
-    }
-  }
+  // ── Hand-hover selection for every menu button (home, store, game over) ──
+  updateHoverControls(dt, timestamp);
+  drawHoverControls();
 
   // Screen flash effect
   if (flashAlpha > 0) {
@@ -1791,7 +2413,9 @@ function gameLoop(timestamp) {
 // ════════════════════════════════════════════════
 function startGame() {
   initAudio();
-  holdToRestartTimer = 0;
+  hoverEl = null;
+  hoverProgress = 0;
+  hoverLockUntil = performance.now() + HOVER.rearmMs;
   score = 0;
   lives = CONFIG.maxLives;
   fruits = [];
@@ -1815,16 +2439,24 @@ function startGame() {
   scoreEl.textContent = '0';
   updateLives();
 
-  startOv.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+  storeScreen.classList.add('hidden');
   gameOverOv.classList.add('hidden');
   hud.classList.remove('hidden');
+  refreshHoverTargets();
 
   gameState = 'playing';
 }
 
 function endGame() {
   gameState = 'over';
-  holdToRestartTimer = 0;
+  hoverEl = null;
+  hoverProgress = 0;
+
+  // 1 score = 1 coin, banked the moment the run ends.
+  const earned = score;
+  profile.coins += earned;
+  saveProfile();
 
   if (score > bestScore) {
     bestScore = score;
@@ -1835,10 +2467,365 @@ function endGame() {
   const elapsed = ((Date.now() - gameStartTime) / 1000).toFixed(0);
   finalScoreE.textContent = score;
   finalStats.textContent = `${totalSliced} sliced · ${totalMissed} missed · ${elapsed}s survived`;
+  coinEarnEl.textContent = `+${earned} 🪙 earned · ${profile.coins} total`;
+  updateMenuInfo();
 
   setTimeout(() => {
     gameOverOv.classList.remove('hidden');
+    refreshHoverTargets();
   }, 600);
+}
+
+// ════════════════════════════════════════════════
+//  HAND-HOVER MENUS, BLADE STORE & COINS
+//  Every menu button is a [data-hover] element, so the fingertip can select it
+//  exactly like a mouse click can. Holding fills a visible ring; pulling the hand
+//  away drains it again, which is the "undo" window.
+// ════════════════════════════════════════════════
+function isMenuOpen() {
+  return !homeScreen.classList.contains('hidden') ||
+    !storeScreen.classList.contains('hidden') ||
+    !gameOverOv.classList.contains('hidden');
+}
+
+function refreshHoverTargets() {
+  hoverTargets = Array.prototype.slice.call(document.querySelectorAll('[data-hover]'))
+    .filter(el => el.getClientRects().length > 0);
+}
+
+function roundRectPath(c, x, y, w, h, r) {
+  const radius = Math.min(r, w / 2, h / 2);
+  c.beginPath();
+  c.moveTo(x + radius, y);
+  c.lineTo(x + w - radius, y);
+  c.quadraticCurveTo(x + w, y, x + w, y + radius);
+  c.lineTo(x + w, y + h - radius);
+  c.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  c.lineTo(x + radius, y + h);
+  c.quadraticCurveTo(x, y + h, x, y + h - radius);
+  c.lineTo(x, y + radius);
+  c.quadraticCurveTo(x, y, x + radius, y);
+  c.closePath();
+}
+
+function updateHoverControls(dt, now) {
+  if (!isMenuOpen() || !playerHand.active || now < hoverLockUntil) {
+    hoverEl = null;
+    hoverProgress = Math.max(0, hoverProgress - dt / HOVER.decayMs);
+    return;
+  }
+
+  // Smallest button under the fingertip wins (cards can sit next to each other).
+  let target = null;
+  let bestDistance = Infinity;
+  for (let i = 0; i < hoverTargets.length; i++) {
+    const el = hoverTargets[i];
+    if (!el.isConnected) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 4 || rect.height < 4) continue;
+    if (playerHand.x < rect.left - HOVER.padPx || playerHand.x > rect.right + HOVER.padPx) continue;
+    if (playerHand.y < rect.top - HOVER.padPx || playerHand.y > rect.bottom + HOVER.padPx) continue;
+    const distance = Math.hypot(
+      playerHand.x - (rect.left + rect.width / 2),
+      playerHand.y - (rect.top + rect.height / 2)
+    );
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      target = el;
+    }
+  }
+
+  if (!target) {
+    hoverEl = null;
+    hoverProgress = Math.max(0, hoverProgress - dt / HOVER.decayMs);
+    return;
+  }
+
+  if (target !== hoverEl) {
+    hoverEl = target;
+    hoverProgress = 0;
+  }
+
+  hoverProgress = Math.min(1, hoverProgress + dt / HOVER.holdMs);
+
+  if (hoverProgress >= 1) {
+    const action = target.dataset.hover;
+    hoverEl = null;
+    hoverProgress = 0;
+    hoverLockUntil = now + HOVER.rearmMs;
+    runMenuAction(action);
+    refreshHoverTargets();
+  }
+}
+
+function drawHoverControls() {
+  if (!hoverEl || hoverProgress <= 0.002) return;
+  const rect = hoverEl.getBoundingClientRect();
+  if (rect.width < 4 || rect.height < 4) return;
+
+  const pad = 5;
+  const x = rect.left - pad;
+  const y = rect.top - pad;
+  const w = rect.width + pad * 2;
+  const h = rect.height + pad * 2;
+  const radius = Math.min(18, h / 2);
+  const alpha = 0.25 + hoverProgress * 0.75;
+
+  ctx.save();
+
+  // Fill rising from the bottom of the button.
+  ctx.save();
+  roundRectPath(ctx, x, y, w, h, radius);
+  ctx.clip();
+  const fillH = h * hoverProgress;
+  const fill = ctx.createLinearGradient(0, y + h - fillH, 0, y + h);
+  fill.addColorStop(0, 'rgba(255, 215, 0, 0.08)');
+  fill.addColorStop(1, 'rgba(255, 215, 0, 0.34)');
+  ctx.fillStyle = fill;
+  ctx.fillRect(x, y + h - fillH, w, fillH);
+  ctx.restore();
+
+  // Golden outline that brightens as the hold completes.
+  roundRectPath(ctx, x, y, w, h, radius);
+  ctx.strokeStyle = `rgba(255, 215, 0, ${alpha})`;
+  ctx.lineWidth = 3;
+  ctx.shadowColor = 'rgba(255, 200, 60, 0.8)';
+  ctx.shadowBlur = 14 * hoverProgress;
+  ctx.stroke();
+
+  ctx.font = 'bold 13px Segoe UI, sans-serif';
+  ctx.fillStyle = '#ffe9a8';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+  ctx.shadowBlur = 6;
+  ctx.fillText(`${Math.round(hoverProgress * 100)}%`, x + w - 8, y + 7);
+
+  ctx.restore();
+}
+
+function runMenuAction(action) {
+  if (!action) return;
+  if (action === 'play') { startPlayFlow(); return; }
+  if (action === 'open-store') { openStore('home'); return; }
+  if (action === 'open-store-from-over') { openStore('gameover'); return; }
+  if (action === 'back') { closeStore(); return; }
+  if (action === 'home') { showHome(); return; }
+  if (action === 'play-again') { initAudio(); startGame(); return; }
+  if (action.indexOf('skin:') === 0) handleSkinAction(action.slice(5));
+}
+
+let toastTimeout = null;
+function showToast(message) {
+  storeToast.textContent = message;
+  storeToast.classList.add('show');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => storeToast.classList.remove('show'), 2200);
+}
+
+// Buying never auto-equips: the card turns into an EQUIP button, as a bought blade
+// should still be a deliberate choice.
+function handleSkinAction(id) {
+  const skin = SKINS.find(s => s.id === id);
+  if (!skin) return;
+
+  if (profile.equipped === skin.id) {
+    showToast(`${skin.name} is already in your hand`);
+    return;
+  }
+
+  if (profile.owned.indexOf(skin.id) !== -1) {
+    equipSkin(skin);
+    return;
+  }
+
+  if (profile.coins < skin.price) {
+    showToast(`Need ${skin.price} 🪙 — you have ${profile.coins}. Slice more fruit!`);
+    return;
+  }
+
+  profile.coins -= skin.price;
+  profile.owned.push(skin.id);
+  saveProfile();
+  renderStore();
+  updateMenuInfo();
+  playComboSound(3);
+  showToast(`${skin.name} unlocked! Tap EQUIP to wield it.`);
+}
+
+function equipSkin(skin) {
+  profile.equipped = skin.id;
+  currentSkin = skin;
+  saveProfile();
+  renderStore();
+  updateMenuInfo();
+  playSliceSound();
+  showToast(`${skin.name} equipped 🗡️`);
+}
+
+// Paint one blade with the exact in-game renderer, rotated horizontal.
+function paintSkinPreview(cv, skin) {
+  if (!cv) return;
+  const cssW = Math.max(90, Math.round(cv.clientWidth || 150));
+  const cssH = Math.max(44, Math.round(cv.clientHeight || 76));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(cssW * dpr);
+  cv.height = Math.round(cssH * dpr);
+
+  const c = cv.getContext('2d');
+  if (!c) return;
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, cssW, cssH);
+
+  const halo = c.createRadialGradient(cssW * 0.48, cssH * 0.5, 2, cssW * 0.48, cssH * 0.5, cssW * 0.58);
+  halo.addColorStop(0, `rgba(${skin.glow}, 0.3)`);
+  halo.addColorStop(1, `rgba(${skin.glow}, 0)`);
+  c.fillStyle = halo;
+  c.fillRect(0, 0, cssW, cssH);
+
+  const bladeLen = Math.min(cssH * 0.6, cssW * 0.5);
+  const gripLen = Math.min(cssH * 0.26, bladeLen * 0.5);
+  c.save();
+  c.translate(cssW * 0.11, cssH * 0.5);
+  c.rotate(-Math.PI / 2);
+  drawKnife(c, 0, 0, 0, 0, bladeLen, gripLen, skin);
+  c.restore();
+}
+
+function repaintMenuPreviews() {
+  if (!homeScreen.classList.contains('hidden')) paintSkinPreview(knifePreview, currentSkin);
+  if (!storeScreen.classList.contains('hidden')) {
+    const canvases = skinGrid.querySelectorAll('canvas[data-skin]');
+    for (let i = 0; i < canvases.length; i++) {
+      const skin = SKINS.find(s => s.id === canvases[i].dataset.skin);
+      if (skin) paintSkinPreview(canvases[i], skin);
+    }
+  }
+}
+
+function updateMenuInfo() {
+  homeCoinsEl.textContent = profile.coins;
+  storeCoinsEl.textContent = profile.coins;
+  equippedNameEl.textContent = currentSkin.name;
+  if (!homeScreen.classList.contains('hidden')) paintSkinPreview(knifePreview, currentSkin);
+}
+
+function renderStore() {
+  skinGrid.innerHTML = SKINS.map(skin => {
+    const owned = profile.owned.indexOf(skin.id) !== -1;
+    const equipped = profile.equipped === skin.id;
+    const state = equipped ? 'equipped' : owned ? 'owned' : 'locked';
+    const label = equipped
+      ? 'EQUIPPED'
+      : owned
+        ? 'EQUIP'
+        : profile.coins >= skin.price
+          ? `UNLOCK · ${skin.price} 🪙`
+          : `🔒 ${skin.price} 🪙`;
+    return `<div class="skin-card ${state}" data-hover="skin:${skin.id}">` +
+      `<canvas data-skin="${skin.id}"></canvas>` +
+      `<div class="skin-name">${skin.name}</div>` +
+      `<div class="skin-tag">${skin.tag}</div>` +
+      `<div class="skin-action">${label}</div>` +
+      `</div>`;
+  }).join('');
+
+  storeCoinsEl.textContent = profile.coins;
+  homeCoinsEl.textContent = profile.coins;
+
+  const canvases = skinGrid.querySelectorAll('canvas[data-skin]');
+  for (let i = 0; i < canvases.length; i++) {
+    const skin = SKINS.find(s => s.id === canvases[i].dataset.skin);
+    if (skin) paintSkinPreview(canvases[i], skin);
+  }
+
+  hoverEl = null;
+  hoverProgress = 0;
+  refreshHoverTargets();
+}
+
+function showHome() {
+  storeScreen.classList.add('hidden');
+  gameOverOv.classList.add('hidden');
+  homeScreen.classList.remove('hidden');
+  hud.classList.add('hidden');
+  gameState = 'idle';
+  fruits.length = 0;
+  slicedHalves.length = 0;
+  particles.length = 0;
+  playerHand.trail.length = 0;
+  updateMenuInfo();
+  refreshHoverTargets();
+}
+
+function openStore(returnTo) {
+  storeReturn = returnTo || 'home';
+  homeScreen.classList.add('hidden');
+  gameOverOv.classList.add('hidden');
+  storeScreen.classList.remove('hidden');
+  gameState = 'idle';
+  renderStore();
+  updateMenuInfo();
+}
+
+function closeStore() {
+  storeScreen.classList.add('hidden');
+  if (storeReturn === 'gameover') {
+    gameState = 'over';
+    gameOverOv.classList.remove('hidden');
+  } else {
+    showHome();
+  }
+  refreshHoverTargets();
+}
+
+let startingGame = false;
+let cameraStartPromise = null;
+
+// Both the menu (on load) and PLAY may want the camera; share one in-flight request so
+// the webcam is never opened twice.
+function ensureCamera() {
+  if (cameraInstance && handsReady) return Promise.resolve();
+  if (!cameraStartPromise) {
+    cameraStartPromise = startCameraAndTracking().then(
+      () => { cameraStartPromise = null; },
+      (error) => { cameraStartPromise = null; throw error; }
+    );
+  }
+  return cameraStartPromise;
+}
+
+async function startPlayFlow() {
+  if (startingGame) return;
+  startingGame = true;
+  playBtn.disabled = true;
+  playBtn.textContent = '⏳ LOADING';
+  loadSpinner.style.display = 'block';
+  loadingText.textContent = cameraInstance && handsReady ? '' : 'Starting camera & loading hand model...';
+
+  try {
+    await ensureCamera();
+    loadingText.textContent = '';
+    loadSpinner.style.display = 'none';
+    startGame();
+  } catch (err) {
+    console.error('Camera / hand tracking startup failed:', err);
+    let message = err.message || 'Unexpected camera error.';
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      message = 'Camera permission was denied. Allow camera access for this site, then press PLAY again.';
+    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      message = await describeMissingCamera();
+    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+      message = 'The camera is being used by another app. Close it and press PLAY again.';
+    }
+    console.info(`Air Slasher ${APP_VERSION} — camera error:`, err.name, err.message);
+    loadingText.textContent = `Unable to start: ${message}`;
+    loadSpinner.style.display = 'none';
+  } finally {
+    playBtn.textContent = '▶ PLAY';
+    playBtn.disabled = false;
+    startingGame = false;
+  }
 }
 
 // Turn a bare NotFoundError into something actionable: "the browser sees no camera at all"
@@ -1865,35 +2852,17 @@ async function describeMissingCamera() {
 // ════════════════════════════════════════════════
 //  INIT
 // ════════════════════════════════════════════════
-startBtn.addEventListener('click', async () => {
-  startBtn.disabled = true;
-  startBtn.textContent = 'Loading...';
-  loadSpinner.style.display = 'block';
-  loadingText.textContent = 'Starting camera & loading hand model...';
+playBtn.addEventListener('click', () => { startPlayFlow(); });
+storeOpenBtn.addEventListener('click', () => { openStore('home'); });
+goStoreBtn.addEventListener('click', () => { openStore('gameover'); });
+goHomeBtn.addEventListener('click', () => { showHome(); });
+storeBackBtn.addEventListener('click', () => { closeStore(); });
 
-  try {
-    await startCameraAndTracking();
-    loadingText.textContent = '';
-    loadSpinner.style.display = 'none';
-    startBtn.textContent = '▶ START GAME';
-    startBtn.disabled = false;
-    startGame();
-  } catch (err) {
-    console.error('Camera / hand tracking startup failed:', err);
-    let message = err.message || 'Unexpected camera error.';
-    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-      message = 'Camera permission was denied. Allow camera access for this site, then press START GAME again.';
-    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-      message = await describeMissingCamera();
-    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-      message = 'The camera is being used by another app. Close it and press START GAME again.';
-    }
-    console.info(`Air Slasher ${APP_VERSION} — camera error:`, err.name, err.message);
-    loadingText.textContent = `Unable to start: ${message}`;
-    startBtn.textContent = '▶ START GAME';
-    startBtn.disabled = false;
-    loadSpinner.style.display = 'none';
-  }
+// Cards are one big target so a fingertip (or thumb) does not have to hit the label.
+skinGrid.addEventListener('click', (event) => {
+  const card = event.target.closest('[data-hover^="skin:"]');
+  if (!card || !skinGrid.contains(card)) return;
+  handleSkinAction(card.dataset.hover.slice(5));
 });
 
 restartBtn.addEventListener('click', () => {
@@ -1910,7 +2879,24 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener('resize', resizeCanvas, { passive: true });
 window.addEventListener('orientationchange', resizeCanvas, { passive: true });
 resizeCanvas();
-console.info(`Air Slasher ${APP_VERSION} loaded`);
+updateMenuInfo();
+refreshHoverTargets();
+console.info(`Air Slasher ${APP_VERSION} loaded · skin: ${currentSkin.name} · coins: ${profile.coins}`);
+
+// Start the camera right away so the menus themselves can be driven by hand.
+// A refusal is not fatal: the mouse/touch still works and PLAY retries.
+loadSpinner.style.display = 'block';
+loadingText.textContent = 'Starting camera & loading hand model...';
+ensureCamera()
+  .then(() => {
+    loadSpinner.style.display = 'none';
+    loadingText.textContent = '';
+  })
+  .catch((error) => {
+    loadSpinner.style.display = 'none';
+    console.info(`Air Slasher ${APP_VERSION} — camera not started on load:`, error && error.name, error && error.message);
+    loadingText.textContent = 'Camera not started — tap PLAY, hand control needs camera access.';
+  });
 requestAnimationFrame(gameLoop);
 </script>
 </body>
